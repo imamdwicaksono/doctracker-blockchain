@@ -70,7 +70,7 @@ func main() {
 		AllowOrigins:     "*",
 		AllowCredentials: false,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods:     "*",
 	}))
 
 	routes.P2PRoutes(app)
