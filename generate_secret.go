@@ -16,7 +16,7 @@ func mainold() {
 	// Generate 32 random bytes (256-bit key)
 	priv, err := eciesgo.GenerateKey()
 	if err != nil {
-		panic(err)
+		fmt.Print(err)
 	}
 
 	fmt.Println("TRACKER_SECRET:", priv.Hex())              // => Masukkan ini ke .env

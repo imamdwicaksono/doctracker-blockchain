@@ -57,7 +57,7 @@ func VerifyOtp(c *fiber.Ctx) error {
 	}
 
 	expectedOtp := redis.GetOtpFromMemoryOrRedis(req.Email)
-	if req.Otp != expectedOtp || expectedOtp == "" {
+	if expectedOtp == "" || req.Otp != expectedOtp {
 		return fiber.NewError(fiber.StatusUnauthorized, "Invalid OTP")
 	}
 
@@ -65,18 +65,29 @@ func VerifyOtp(c *fiber.Ctx) error {
 	redis.Client.Del(redis.Ctx, "otp:"+req.Email)
 
 	// Buat JWT token
-	token, _ := jwt.GenerateJWT(req.Email)
+	token, expUnix, err := jwt.GenerateJWT(req.Email)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
+	}
 
+	// Set cookie
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    token,
 		HTTPOnly: true,
-		// Secure:   true,
-		Path:   "/",
-		MaxAge: 86400, // 1 day
+		Secure:   false, // ubah jadi true kalau pakai HTTPS
+		Path:     "/",
+		MaxAge:   86400,
+		SameSite: "Lax", // atau "Strict" / "None" tergantung skenario
 	})
 
-	return c.JSON(fiber.Map{"status": 200, "message": "OTP verified successfully", "token": token})
+	return c.JSON(fiber.Map{
+		"status":  200,
+		"message": "OTP verified successfully",
+		"token":   token,
+		"email":   req.Email,
+		"exp":     expUnix,
+	})
 }
 
 func GetQR(c *fiber.Ctx) error {
@@ -97,7 +108,21 @@ func GetQR(c *fiber.Ctx) error {
 func Logout(c *fiber.Ctx) error {
 	token := c.Cookies("authToken")
 
-	// Optional: parsing token untuk ambil TTL dari "exp"
+	// Fallback: ambil dari Authorization header
+	if token == "" {
+		authHeader := c.Get("Authorization")
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			token = authHeader[7:]
+		}
+	}
+
+	if token == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Missing token",
+		})
+	}
+
+	// Optional: parsing untuk TTL
 	claims := jwt.GetMapClaims("")
 	parsed, err := jwt.ParseWithClaims(token, claims)
 	if err == nil && parsed.Valid {
@@ -108,7 +133,7 @@ func Logout(c *fiber.Ctx) error {
 		}
 	}
 
-	// Clear cookie
+	// Hapus cookie (opsional jika pakai header)
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    "",
@@ -124,9 +149,15 @@ func Logout(c *fiber.Ctx) error {
 
 func AuthMe(c *fiber.Ctx) error {
 	tokenStr := c.Cookies("authToken")
+
+	// Fallback: cari di Authorization header
 	if tokenStr == "" {
-		tokenStr = c.Get("Authorization")
+		authHeader := c.Get("Authorization")
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			tokenStr = authHeader[7:]
+		}
 	}
+
 	if tokenStr == "" {
 		return fiber.NewError(fiber.StatusUnauthorized, "Missing token")
 	}
