@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"doc-tracker/utils"
 	"fmt"
+	"os"
 	"sync"
 )
 
@@ -17,19 +18,46 @@ var walletMap = make(map[string]WalletInfo)
 var mu sync.Mutex
 
 func GetAddressFromEmail(email string) string {
-	wallet, exists := GetWalletByEmail(email)
-	if !exists {
+
+	wallet := GetWalletFromPem(email)
+	if wallet.PrivateKey == nil || wallet.PublicKey == nil || wallet.Address == "" {
+		fmt.Printf("Wallet for %s is not properly initialized\n", email)
 		return ""
 	}
 	return wallet.Address
 }
 
-func GetWalletByEmail(email string) (WalletInfo, bool) {
+func GetWalletFromPem(email string) WalletInfo {
 	mu.Lock()
 	defer mu.Unlock()
 
-	wallet, exists := walletMap[email]
-	return wallet, exists
+	wallet, err := os.ReadFile("wallet/mnemonic/" + email + ".txt")
+	if err != nil {
+		fmt.Printf("Error reading wallet file for %s: %v\n", email, err)
+		return WalletInfo{}
+	}
+
+	// Jika wallet tidak ada, buat baru
+	privateKey, publicKey, address := utils.PrivateKeyFromMnemonic(string(wallet))
+
+	return WalletInfo{
+		PrivateKey: privateKey,
+		PublicKey:  publicKey,
+		Address:    address,
+	}
+}
+
+func GetWalletByEmail(email string) (WalletInfo, bool) {
+	mu.Lock()
+
+	defer mu.Unlock()
+
+	wallet := GetOrCreateWallet(email) // Pastikan wallet sudah ada atau dibuat
+	if wallet.PrivateKey == nil || wallet.PublicKey == nil || wallet.Address == "" {
+		fmt.Printf("Wallet for %s is not properly initialized\n", email)
+		return WalletInfo{}, false
+	}
+	return wallet, true
 }
 
 func GetOrCreateWallet(email string) WalletInfo {
@@ -42,6 +70,7 @@ func GetOrCreateWallet(email string) WalletInfo {
 
 	// Gunakan mnemonic unik per email
 	mnemonic := utils.GenerateMnemonic()
+
 	privKey, pubKey, addr := utils.PrivateKeyFromMnemonic(mnemonic)
 
 	w := WalletInfo{
@@ -71,4 +100,5 @@ func saveMnemonicToFile(email, mnemonic string) {
 	if err != nil {
 		fmt.Printf("Error saving mnemonic for %s: %v\n", email, err)
 	}
+	fmt.Printf("Mnemonic for %s saved to %s\n", email, filename)
 }

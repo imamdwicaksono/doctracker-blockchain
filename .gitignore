@@ -1,0 +1,7 @@
+.env
+data/
+storage/
+*.log
+*.tmp
+*.bak
+wallet/mnemonic/*

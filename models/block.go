@@ -7,4 +7,5 @@ type Block struct {
 	Hash         string    `json:"hash"`
 	Nonce        int       `json:"nonce"`
 	Transactions []Tracker `json:"transactions"`
+	Encrypted    bool      `json:"encrypted"` // Menandakan apakah block terenkripsi
 }

@@ -38,10 +38,3 @@ func FindTrackerByID(id string) *models.Tracker {
 func UpdateTracker(t *models.Tracker) {
 	Trackers[t.ID] = t
 }
-
-// Hapus semua block
-func ClearAllBlocks() {
-	blockStore.Lock()
-	defer blockStore.Unlock()
-	blockStore.blocks = []models.Block{}
-}

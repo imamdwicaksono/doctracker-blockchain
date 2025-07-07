@@ -1,8 +1,12 @@
+// mempool/mempool.go
 package mempool
 
 import (
 	"doc-tracker/models"
+	"doc-tracker/utils"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -10,15 +14,209 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-var mempool = make(map[string]*models.Tracker)
+type TrackerEntry = models.Tracker
 
 var (
-	mempoolList map[string]models.Tracker = make(map[string]models.Tracker)
-	mu          sync.Mutex
-	filePath    string = "data/mempool.json" // Path to save mempool data
+	mempool      = make(map[string]*models.Tracker)
+	mu           sync.RWMutex
+	jsonFilePath = "data/mempool.json"
+	binFilePath  = "data/mempool.bin"
+	pubKeyPath   = "data/public.key"
+	privKeyPath  = "data/private.key"
 )
 
-type TrackerEntry = models.Tracker
+// InitKeys inisialisasi atau load kunci
+func InitKeys() (*utils.ECDHKeyPair, error) {
+	// Jika kunci sudah ada, load dari file
+	if _, err := os.Stat(pubKeyPath); err == nil {
+		return utils.LoadKeys()
+	}
+
+	// Generate new key pair
+	keyPair, err := utils.GenerateECDHKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate keys: %v", err)
+	}
+
+	// Simpan public key
+	pubKeyBytes := utils.SerializePublicKey(keyPair.PublicKey)
+	if err := os.WriteFile(pubKeyPath, pubKeyBytes, 0600); err != nil {
+		return nil, fmt.Errorf("failed to save public key: %v", err)
+	}
+
+	// Simpan private key
+	privKeyBytes := keyPair.PrivateKey.Bytes()
+	if err := os.WriteFile(privKeyPath, privKeyBytes, 0600); err != nil {
+		return nil, fmt.Errorf("failed to save private key: %v", err)
+	}
+
+	return keyPair, nil
+}
+
+// InitEncryptMempool migrasi ke mempool terenkripsi
+func InitEncryptMempool() error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Skip jika file terenkripsi sudah ada
+	if _, err := os.Stat(binFilePath); err == nil {
+		log.Println("🟡 Encrypted mempool already exists")
+		return nil
+	}
+
+	// Cek jika file plaintext ada
+	if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
+		log.Println("🟡 No mempool found to encrypt")
+		return nil
+	}
+
+	log.Println("🔄 Encrypting mempool...")
+
+	// Load kunci
+	keyPair, err := utils.LoadKeys()
+	if err != nil {
+		return fmt.Errorf("failed to load keys: %v", err)
+	}
+
+	// Baca data plaintext
+	plaintext, err := os.ReadFile(jsonFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read mempool: %v", err)
+	}
+
+	// Enkripsi data
+	// Untuk demo, kita gunakan kunci public sendiri sebagai peer
+	sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to derive secret: %v", err)
+	}
+
+	encKey := utils.GenerateEncryptionKey(sharedSecret)
+	ciphertext, err := utils.EncryptData(encKey, plaintext)
+	if err != nil {
+		return fmt.Errorf("encryption failed: %v", err)
+	}
+
+	// Simpan versi terenkripsi
+	if err := os.WriteFile(binFilePath, ciphertext, 0600); err != nil {
+		return fmt.Errorf("failed to save encrypted mempool: %v", err)
+	}
+
+	// Hapus file plaintext (opsional)
+	if err := os.Remove(jsonFilePath); err != nil {
+		log.Printf("⚠️ Could not remove plaintext file: %v", err)
+	}
+
+	log.Println("✅ Mempool encrypted successfully")
+	return nil
+}
+
+// LoadFromFile memuat mempool dari file terenkripsi
+func LoadFromFile() error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Coba load dari file terenkripsi dulu
+	if _, err := os.Stat(binFilePath); err == nil {
+		// Load kunci
+		keyPair, err := utils.LoadKeys()
+		if err != nil {
+			return fmt.Errorf("failed to load keys: %v", err)
+		}
+
+		// Baca data terenkripsi
+		ciphertext, err := os.ReadFile(binFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to read encrypted mempool: %v", err)
+		}
+
+		// Dekripsi data
+		sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
+		if err != nil {
+			return fmt.Errorf("failed to derive secret: %v", err)
+		}
+
+		encKey := utils.GenerateEncryptionKey(sharedSecret)
+		plaintext, err := utils.DecryptData(encKey, ciphertext)
+		if err != nil {
+			return fmt.Errorf("decryption failed: %v", err)
+		}
+
+		// Parse JSON
+		var loadedMempool map[string]*models.Tracker
+		if err := json.Unmarshal(plaintext, &loadedMempool); err != nil {
+			return fmt.Errorf("failed to parse mempool: %v", err)
+		}
+
+		mempool = loadedMempool
+		log.Println("✅ Mempool loaded from encrypted file")
+		return nil
+	}
+
+	// Fallback ke file plaintext
+	if _, err := os.Stat(jsonFilePath); err == nil {
+		log.Println("🟡 Loading from plaintext mempool")
+		return loadFromPlaintext()
+	}
+
+	return errors.New("no mempool file found")
+}
+
+// loadFromPlaintext helper untuk load dari JSON plaintext
+func loadFromPlaintext() error {
+	data, err := os.ReadFile(jsonFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read plaintext mempool: %v", err)
+	}
+
+	var loadedMempool map[string]*models.Tracker
+	if err := json.Unmarshal(data, &loadedMempool); err != nil {
+		return fmt.Errorf("failed to parse mempool: %v", err)
+	}
+
+	mempool = loadedMempool
+	return nil
+}
+
+// SaveToFile menyimpan mempool ke file terenkripsi
+func SaveToFile() error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Marshal data ke JSON
+	data, err := json.MarshalIndent(mempool, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal mempool: %v", err)
+	}
+
+	// Load kunci
+	keyPair, err := utils.LoadKeys()
+	if err != nil {
+		return fmt.Errorf("failed to load keys: %v", err)
+	}
+
+	// Enkripsi data
+	sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to derive secret: %v", err)
+	}
+
+	encKey := utils.GenerateEncryptionKey(sharedSecret)
+	ciphertext, err := utils.EncryptData(encKey, data)
+	if err != nil {
+		return fmt.Errorf("encryption failed: %v", err)
+	}
+
+	// Simpan ke file
+	if err := os.WriteFile(binFilePath, ciphertext, 0600); err != nil {
+		return fmt.Errorf("failed to save encrypted mempool: %v", err)
+	}
+
+	return nil
+}
+
+// [Fungsi-fungsi manajemen mempool yang sama seperti sebelumnya...]
+// Add, GetAll, GetCompletedTrackers, RemoveFromMempool, dll.
 
 // Add tracker ke mempool jika belum ada
 func Add(t *models.Tracker) {
@@ -35,6 +233,16 @@ func GetAll() []*models.Tracker {
 		list = append(list, t)
 	}
 	return list
+}
+
+func GetByID(id string) *models.Tracker {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	if tracker, exists := mempool[id]; exists {
+		return tracker
+	}
+	return nil
 }
 
 // Ambil tracker dengan status complete
@@ -85,20 +293,21 @@ func Update(tracker models.Tracker) {
 func Clear() {
 	mu.Lock()
 	defer mu.Unlock()
-	mempoolList = make(map[string]models.Tracker)
+	mempool = make(map[string]*models.Tracker)
 }
 
 func AddIfNotExists(tracker models.Tracker) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if _, exists := mempoolList[tracker.ID]; !exists {
-		mempoolList[tracker.ID] = tracker
+	if _, exists := mempool[tracker.ID]; !exists {
+		mempool[tracker.ID] = &tracker
 	}
 }
 
 // Iterate iterates over all transactions in the mempool and applies the given function.
 func Iterate(fn func(tx *models.Tracker) error) error {
+
 	for _, tx := range mempool { // assuming mempool is a slice or map of *models.Transaction
 		if err := fn(tx); err != nil {
 			return err
@@ -107,43 +316,13 @@ func Iterate(fn func(tx *models.Tracker) error) error {
 	return nil
 }
 
-func SaveToFile() {
-	data, err := json.MarshalIndent(mempool, "", "  ")
-	if err != nil {
-		log.Println("Failed to marshal mempool:", err)
-		return
-	}
-	err = os.WriteFile(filePath, data, 0644)
-	if err != nil {
-		log.Println("Failed to save mempool to file:", err)
-	}
-}
-
-func LoadFromFile() {
+func UpdateTracker(tracker *models.Tracker) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return
-	}
+	mempool[tracker.ID] = tracker
 
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Println("Failed to read mempool file:", err)
-		return
+	if err := SaveToFile(); err != nil {
+		fmt.Printf("❌ Gagal simpan mempool: %v\n", err)
 	}
-
-	var flat map[string]models.Tracker
-	err = json.Unmarshal(data, &flat)
-	if err != nil {
-		log.Println("Failed to unmarshal mempool:", err)
-		return
-	}
-
-	for id, val := range flat {
-		tracker := val
-		mempool[id] = &tracker
-	}
-
-	log.Println("Mempool loaded from file")
 }

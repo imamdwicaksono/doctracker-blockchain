@@ -62,3 +62,29 @@ func UploadEvidence(c *fiber.Ctx) error {
 		"evidence_path": dstPath,
 	})
 }
+
+func ViewEvidence(c *fiber.Ctx) error {
+	hash := c.Query("hash") // ambil parameter hash dari query string
+	if hash == "" {
+		return c.Status(400).SendString("Missing image hash")
+	}
+
+	track, err := services.GetTrackerByHash(hash)
+	if err != nil {
+		return c.Status(404).SendString("Tracker not found" + err.Error())
+	}
+
+	// fmt.Printf("Tracker found: %s with hash %s\n", track.ID, hash)
+	// fmt.Printf("Tracker checkpoints: %d\n", len(track.Checkpoints))
+
+	filePath := services.GetEvidencePath(track, hash)
+	// fmt.Printf("Evidence file path: %s\n", filePath)
+
+	// Validasi file ada
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return c.Status(404).SendString("Image not found" + filePath)
+	}
+
+	// Set Content-Type otomatis
+	return c.SendFile(filePath)
+}

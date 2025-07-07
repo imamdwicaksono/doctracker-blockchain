@@ -31,8 +31,15 @@ type Checkpoint struct {
 }
 
 type CheckpointStatusInput struct {
-	TrackerID   string `json:"tracker_id"`
-	Email       string `json:"email"`
-	Note        string `json:"note"`
-	EvidenceB64 string `json:"evidence"` // base64 encoded image
+	TrackerID string  `json:"tracker_id"`
+	Email     string  `json:"email"`
+	Note      *string `json:"note"`
+	Evidence  *string `json:"evidence"` // base64 encoded image
+}
+
+type CheckpointCompleteRequest struct {
+	TrackerID   string  `json:"tracker_id" example:"1234"`
+	Email       string  `json:"email" example:"user@example.com"`
+	Note        *string `json:"note,omitempty" example:"Dokumen sudah ditandatangani"`
+	EvidenceB64 *string `json:"evidence,omitempty" example:"data:image/png;base64,iVBORw0KGgo..."`
 }

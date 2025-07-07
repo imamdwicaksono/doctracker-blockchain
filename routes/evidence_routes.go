@@ -8,4 +8,9 @@ import (
 
 func RegisterEvidenceRoutes(router fiber.Router) {
 	router.Post("/upload", controllers.UploadEvidence)
+
+}
+
+func RegisterEvidenceRoutesWeb(router fiber.Router) {
+	router.Get("/evidence/view", controllers.ViewEvidence)
 }

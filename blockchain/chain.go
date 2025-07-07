@@ -1,52 +1,8 @@
 package blockchain
 
 import (
-	"doc-tracker/models"
 	"doc-tracker/storage"
-	"time"
 )
-
-var Blockchain []models.Block
-
-// CreateGenesisBlock membuat block awal
-func CreateGenesisBlock() models.Block {
-	genesis := models.Block{
-		Index:        0,
-		Timestamp:    time.Now().Unix(),
-		PrevHash:     "0",
-		Transactions: []models.Tracker{},
-		Nonce:        0,
-	}
-	genesis.Hash = CalculateHash(genesis)
-	return genesis
-}
-
-// InitChain inisialisasi blockchain dengan genesis block
-func InitChain() {
-	genesis := CreateGenesisBlock()
-	Blockchain = append(Blockchain, genesis)
-	storage.SaveBlock(genesis)
-}
-
-// MineNewBlock membuat block baru dan memproses mining
-func MineNewBlock(transactions []models.Tracker) Block {
-	prev := GetLastBlock()
-
-	newBlock := Block{
-		Index:        prev.Index + 1,
-		Timestamp:    time.Now().Unix(),
-		PrevHash:     prev.Hash,
-		Transactions: transactions,
-	}
-
-	// Modular mining
-	MineBlock(&newBlock, 4)
-
-	Blockchain = append(Blockchain, newBlock)
-	storage.SaveBlock(newBlock)
-
-	return newBlock
-}
 
 // AddBlock menambahkan block dari peer lain jika belum ada
 func AddBlock(block Block) {
@@ -57,28 +13,6 @@ func AddBlock(block Block) {
 	}
 	Blockchain = append(Blockchain, block)
 	storage.SaveBlock(block)
-}
-
-// GetLastBlock mengambil block terakhir
-func GetLastBlock() Block {
-	return Blockchain[len(Blockchain)-1]
-}
-
-// IsBlockValid memvalidasi block baru dari peer
-func IsBlockValid(newBlock, prevBlock Block) bool {
-	if prevBlock.Index+1 != newBlock.Index {
-		return false
-	}
-	if prevBlock.Hash != newBlock.PrevHash {
-		return false
-	}
-	if CalculateHash(newBlock) != newBlock.Hash {
-		return false
-	}
-	if newBlock.Hash[:4] != "0000" {
-		return false
-	}
-	return true
 }
 
 // IsValidChain memeriksa apakah chain valid dari genesis hingga terakhir

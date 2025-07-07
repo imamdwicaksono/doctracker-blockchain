@@ -18,7 +18,7 @@ func MinePendingTrackers() models.Block {
 	for _, t := range pending {
 		trackers = append(trackers, *t)
 	}
-	block := blockchain.MineNewBlock(trackers)
+	block, _ := blockchain.MineNewBlock(trackers)
 	mempool.Clear()
 
 	// TODO: Kirim ke peer (sync P2P)

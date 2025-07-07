@@ -5,7 +5,6 @@ import (
 	"doc-tracker/mempool"
 	"doc-tracker/models"
 	"doc-tracker/p2p"
-	"fmt"
 	"time"
 )
 
@@ -24,20 +23,16 @@ func StartMinerWorker() {
 			for i, t := range trackerList {
 				trackers[i] = *t
 			}
-			newBlock := blockchain.NewBlockFromTransactions(trackers)
+			// newBlock := blockchain.NewBlockFromTransactions(trackers)
 
 			// Tambahkan ke chain lokal
-			blockchain.AddBlock(newBlock)
+			mine, error := blockchain.MineNewBlock(trackers)
 
-			fmt.Printf("✅ Block mined: #%d | Hash: %s | Tx: %d\n", newBlock.Index, newBlock.Hash, len(newBlock.Transactions))
-
-			// Hapus tracker dari mempool
-			for _, t := range trackerList {
-				mempool.RemoveFromMempool(t.ID)
+			if error != nil {
+				// Broadcast block ke semua peer
+				go p2p.BroadcastNewBlock(mine)
 			}
 
-			// Broadcast block ke semua peer
-			go p2p.BroadcastNewBlock(newBlock)
 		}
 	}()
 }

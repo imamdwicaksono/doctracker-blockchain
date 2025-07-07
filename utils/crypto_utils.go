@@ -14,8 +14,12 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
+	"math/big"
+	"os"
 
+	eciesgo "github.com/ecies/go/v2"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -129,4 +133,108 @@ func PublicKeyToString(pub *ecdsa.PublicKey) (string, error) {
 	}
 	pubBytes := elliptic.Marshal(pub.Curve, pub.X, pub.Y)
 	return base64.StdEncoding.EncodeToString(pubBytes), nil
+}
+
+func EncryptDataWithPublicKey(pubHex string, message string) (string, error) {
+	pub, err := eciesgo.NewPublicKeyFromHex(pubHex)
+	if err != nil {
+		return "", err
+	}
+	ciphertext, err := eciesgo.Encrypt(pub, []byte(message))
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+func DecryptDataWithPrivateKey(privHex string, base64Cipher string) (string, error) {
+	priv, err := eciesgo.NewPrivateKeyFromHex(privHex)
+	if err != nil {
+		return "", err
+	}
+	cipherBytes, _ := base64.StdEncoding.DecodeString(base64Cipher)
+	plaintext, err := eciesgo.Decrypt(priv, cipherBytes)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}
+
+func SavePEMKey(fileName string, key *ecdsa.PrivateKey) error {
+	der, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return err
+	}
+
+	block := &pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: der,
+	}
+
+	return os.WriteFile(fileName, pem.EncodeToMemory(block), 0600)
+}
+
+func SavePEMPub(fileName string, pub *ecdsa.PublicKey) error {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return err
+	}
+
+	block := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: der,
+	}
+
+	return os.WriteFile(fileName, pem.EncodeToMemory(block), 0644)
+}
+
+func loadPEMPrivateKey(file string) (*ecdsa.PrivateKey, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	return x509.ParseECPrivateKey(block.Bytes)
+}
+
+func loadPEMPublicKey(file string) (*ecdsa.PublicKey, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	pubInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	pub, ok := pubInterface.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not ECDSA public key")
+	}
+	return pub, nil
+}
+
+func ECIESPrivateKeyToECDSA(priv *eciesgo.PrivateKey) *ecdsa.PrivateKey {
+	d := new(big.Int).SetBytes(priv.Bytes())
+	pubX, pubY := elliptic.P256().ScalarBaseMult(d.Bytes())
+
+	return &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     pubX,
+			Y:     pubY,
+		},
+		D: d,
+	}
+}
+
+func ECIESPublicKeyToECDSA(pub *eciesgo.PublicKey) *ecdsa.PublicKey {
+	if pub == nil || pub.X == nil || pub.Y == nil {
+		return nil
+	}
+	return &ecdsa.PublicKey{
+		Curve: elliptic.P256(), // Sesuaikan dengan ECIES lib default (seharusnya P256)
+		X:     pub.X,
+		Y:     pub.Y,
+	}
 }

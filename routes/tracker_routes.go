@@ -7,9 +7,12 @@ import (
 )
 
 func TrackerRoutes(router fiber.Router) {
-	api := router.Group("/tracker")
+	api := router.Group("/trackers")
 	api.Get("/", controllers.GetTrackers)
-	api.Get("/:id", controllers.GetTrackerByID)
-	api.Get("/address/:address", controllers.GetTrackersByAddress)
-	api.Post("/create", controllers.CreateTracker)
+
+	apiTracker := router.Group("/tracker")
+	apiTracker.Get("/:id", controllers.GetTrackerByID)
+	apiTracker.Get("/address/:address", controllers.GetTrackersByAddress)
+	apiTracker.Post("/create", controllers.CreateTracker)
+	apiTracker.Get("/summary/:email", controllers.GetTrackerSummary)
 }

@@ -1,0 +1,243 @@
+basePath: /
+definitions:
+  models.Checkpoint:
+    properties:
+      address:
+        description: auto-generated
+        type: string
+      company:
+        description: only if external
+        type: string
+      completed_at:
+        type: integer
+      email:
+        type: string
+      encrypted_note:
+        type: string
+      evidence_hash:
+        type: string
+      evidence_path:
+        type: string
+      is_completed:
+        type: boolean
+      is_view:
+        description: if true, can decrypt Note
+        type: boolean
+      note:
+        description: original (optional)
+        type: string
+      role:
+        description: signer / courier
+        type: string
+      type:
+        description: internal / external
+        type: string
+    type: object
+  models.CheckpointStatusInput:
+    properties:
+      email:
+        type: string
+      evidence:
+        description: base64 encoded image
+        type: string
+      note:
+        type: string
+      tracker_id:
+        type: string
+    type: object
+  models.Tracker:
+    properties:
+      checkpoints:
+        items:
+          $ref: '#/definitions/models.Checkpoint'
+        type: array
+      created_at:
+        type: integer
+      creator:
+        type: string
+      creator_address:
+        type: string
+      encrypted_notes:
+        additionalProperties:
+          type: string
+        type: object
+      id:
+        type: string
+      privacy:
+        type: string
+      status:
+        description: pending, progress, complete
+        type: string
+      target_end:
+        description: self / email / address
+        type: string
+      type:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: REST API for internal document blockchain tracking system
+  title: Document Tracker API
+  version: "1.0"
+paths:
+  /checkpoint/complete:
+    post:
+      consumes:
+      - application/json
+      description: Mark a checkpoint as completed by uploading evidence
+      parameters:
+      - description: Checkpoint Status Input
+        in: body
+        name: checkpoint
+        required: true
+        schema:
+          $ref: '#/definitions/models.CheckpointStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Complete a checkpoint with evidence
+      tags:
+      - Checkpoints
+  /trackers:
+    get:
+      description: Retrieve all trackers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Tracker'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all document trackers
+      tags:
+      - Trackers
+    post:
+      consumes:
+      - application/json
+      description: Create a tracker with initial checkpoints
+      parameters:
+      - description: Tracker payload
+        in: body
+        name: tracker
+        required: true
+        schema:
+          $ref: '#/definitions/models.Tracker'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Tracker'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a new document tracker
+      tags:
+      - Trackers
+  /trackers/{id}:
+    get:
+      description: Retrieve tracker using its ID
+      parameters:
+      - description: Tracker ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Tracker'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a tracker by ID
+      tags:
+      - Trackers
+  /trackers/address/{address}:
+    get:
+      description: Retrieve all trackers initiated by a specific address
+      parameters:
+      - description: Wallet address
+        in: path
+        name: address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Tracker'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get trackers by wallet address
+      tags:
+      - Trackers
+swagger: "2.0"

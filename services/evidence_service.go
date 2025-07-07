@@ -2,10 +2,12 @@ package services
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"os"
+	"strings"
 )
 
 type EvidenceInfo struct {
@@ -32,15 +34,10 @@ func SaveBase64Evidence(trackerID string, checkpointID string, base64Str *string
 	}, nil
 }
 
-func SaveEvidenceFile(trackerID, checkpointID string, file *multipart.FileHeader) (EvidenceInfo, error) {
-	src, err := file.Open()
-	if err != nil {
-		return EvidenceInfo{}, err
-	}
-	defer src.Close()
+func SaveEvidenceFile(trackerID, checkpointID string, file *string) (EvidenceInfo, error) {
 
 	// Simpan file
-	savePath := fmt.Sprintf("storage/evidence/%s_%s_%s", trackerID, checkpointID, file.Filename)
+	savePath := fmt.Sprintf("storage/evidence/%s_%s.jpg", trackerID, checkpointID)
 	dst, err := os.Create(savePath)
 	if err != nil {
 		return EvidenceInfo{}, err
@@ -50,12 +47,16 @@ func SaveEvidenceFile(trackerID, checkpointID string, file *multipart.FileHeader
 	hash := sha256.New()
 	writer := io.MultiWriter(dst, hash)
 
-	if _, err := io.Copy(writer, src); err != nil {
+	decoded, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(*file)))
+	if err != nil {
+		return EvidenceInfo{}, err
+	}
+	if _, err := writer.Write(decoded); err != nil {
 		return EvidenceInfo{}, err
 	}
 
 	return EvidenceInfo{
-		FileName: file.Filename,
+		FileName: fmt.Sprintf("%s_%s", trackerID, checkpointID),
 		Hash:     fmt.Sprintf("%x", hash.Sum(nil)),
 		Path:     savePath,
 	}, nil
