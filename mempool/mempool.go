@@ -305,6 +305,14 @@ func AddIfNotExists(tracker models.Tracker) {
 	}
 }
 
+func Exists(id string) bool {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	_, exists := mempool[id]
+	return exists
+}
+
 // Iterate iterates over all transactions in the mempool and applies the given function.
 func Iterate(fn func(tx *models.Tracker) error) error {
 
@@ -325,4 +333,23 @@ func UpdateTracker(tracker *models.Tracker) {
 	if err := SaveToFile(); err != nil {
 		fmt.Printf("❌ Gagal simpan mempool: %v\n", err)
 	}
+}
+
+func RemoveDuplicateEntries() {
+	unique := make(map[string]bool)
+	var cleaned []TrackerEntry
+
+	for _, entry := range mempool {
+		if !unique[entry.ID] {
+			unique[entry.ID] = true
+			cleaned = append(cleaned, *entry)
+		}
+	}
+
+	// Rebuild mempool with unique entries
+	mempool = make(map[string]*models.Tracker)
+	for i := range cleaned {
+		mempool[cleaned[i].ID] = &cleaned[i]
+	}
+	fmt.Printf("[Cleanse] %d unique tracker entries retained\n", len(cleaned))
 }

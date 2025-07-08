@@ -25,6 +25,10 @@ func StartMinerWorker() {
 			}
 			// newBlock := blockchain.NewBlockFromTransactions(trackers)
 
+			// Filter duplikat tracker
+			if FilterDuplicateTrackers(trackers) == nil {
+				continue
+			}
 			// Tambahkan ke chain lokal
 			mine, error := blockchain.MineNewBlock(trackers)
 
@@ -35,4 +39,17 @@ func StartMinerWorker() {
 
 		}
 	}()
+}
+
+func FilterDuplicateTrackers(trackers []models.Tracker) []models.Tracker {
+	unique := make(map[string]bool)
+	var filtered []models.Tracker
+
+	for _, t := range trackers {
+		if !unique[t.ID] {
+			unique[t.ID] = true
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
 }

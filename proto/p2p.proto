@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "/proto;proto";
+
+message Checkpoint {
+  string email = 1;
+  string type = 2;
+  string company = 3;
+  string role = 4;
+  bool is_viewable = 5;
+  string note = 6;
+  string encrypted_note = 7;
+  string address = 8;
+  string evidence_hash = 9;
+  string evidence_path = 10;
+  bool is_completed = 11;
+  int64 completed_at = 12;
+}
+
+message Tracker {
+  string id = 1;
+  string type = 2;
+  string privacy = 3;
+  string creator = 4;
+  string creator_addr = 5;
+  int64 created_at = 6;
+  repeated Checkpoint checkpoints = 7;
+  string target_end = 8;
+  string status = 9;
+  map<string, string> encrypted_notes = 10;
+}
+
+message Block {
+  int32 index = 1;
+  int64 timestamp = 2;
+  string prev_hash = 3;
+  string hash = 4;
+  int32 nonce = 5;
+  repeated Tracker transactions = 6;
+  bool encrypted = 7;
+}
+
+message BlockList {
+  repeated Block blocks = 1;
+}
+
+message Empty {}
+
+service P2PService {
+  rpc GetBlockchain (Empty) returns (BlockList);
+  rpc BroadcastBlock (Block) returns (Empty);
+}

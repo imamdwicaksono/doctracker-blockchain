@@ -2,6 +2,7 @@ package main
 
 import (
 	"doc-tracker/blockchain"
+	"doc-tracker/grpc"
 	"doc-tracker/mempool"
 	"doc-tracker/middlewares"
 	"doc-tracker/routes"
@@ -21,7 +22,6 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
@@ -58,20 +58,49 @@ func main() {
 	}
 	fmt.Println("[Mempool] Mempool loaded")
 
+	mempool.RemoveDuplicateEntries()
+	fmt.Println("[Mempool] Duplicate entries removed")
+	blockchain.RemoveDuplicateBlocks()
+	fmt.Println("[Blockchain] Duplicate blocks removed")
+
 	services.StartMinerWorker()
 	fmt.Println("[Miner] Worker started")
 
 	services.StartSyncWorker()
 	fmt.Println("[Sync] Worker started")
 
+	go grpc.StartGRPCServer("3003")
+	fmt.Println("[GRPC] Server started on port 3003")
+
 	app := fiber.New()
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowCredentials: false,
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowMethods:     "*",
-	}))
+	// allowedOrigins := ""
+	// if os.Getenv("ENV") == "development" {
+	// 	allowedOrigins = "http://172.24.4.25:3000,http://localhost:3000"
+	// } else {
+	// 	allowedOrigins = "https://production.com"
+	// }
+
+	// app.Use(cors.New(cors.Config{
+	// 	AllowOriginsFunc: func(origin string) bool {
+	// 		return origin == "http://docutrack.test" ||
+	// 			origin == "http://172.24.4.25:3000" ||
+	// 			origin == "http://localhost:3000" ||
+	// 			origin == "http://blockchain.mmsgroup.co.id:3000"
+	// 	},
+	// 	AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+	// 	AllowHeaders:     "Origin, Content-Type, Accept, Authorization", // ⚠️ jangan tambahkan `credentials`
+	// 	ExposeHeaders:    "Content-Length",
+	// 	AllowCredentials: true,
+	// 	MaxAge:           12 * 3600,
+	// }))
+
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Printf("👉 [%s] %s from %s\n", c.Method(), c.Path(), c.Get("Origin"))
+		return c.Next()
+	})
+
+	app.Use(limiter.New(limiter.Config{Max: 100, Expiration: time.Minute}))
 
 	routes.P2PRoutes(app)
 	routes.SyncRoutes(app)
@@ -79,7 +108,6 @@ func main() {
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	app.Use(limiter.New(limiter.Config{Max: 100, Expiration: time.Minute}))
 	// api
 	HandlerApiRoute(app)
 

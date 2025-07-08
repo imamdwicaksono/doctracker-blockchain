@@ -31,17 +31,17 @@ func InitChain() {
 	// Coba load dari storage dulu
 	if loaded := loadChainFromStorage(); loaded {
 		fmt.Printf("✅ Loaded blockchain with %d blocks\n", len(Blockchain))
-		for _, block := range Blockchain {
-			fmt.Printf("Block #%d | Hash: %s | Encrypted: %t | Transactions: %d\n", block.Index, block.Hash, block.Encrypted, len(block.Transactions))
-			fmt.Printf("Timestamp: %s\n", time.Unix(block.Timestamp, 0).Format(time.RFC3339))
-			fmt.Printf("Previous Hash: %s\n", block.PrevHash)
-			fmt.Println("Transactions:")
-			for _, tx := range block.Transactions {
-				fmt.Printf("  - ID: %s | Type: %s | Status: %s\n", tx.ID, tx.Type, tx.Status)
-			}
-			// Tambahkan garis pemisah antar block
-			fmt.Println("--------------------------------------------------")
-		}
+		// for _, block := range Blockchain {
+		// 	// fmt.Printf("Block #%d | Hash: %s | Encrypted: %t | Transactions: %d\n", block.Index, block.Hash, block.Encrypted, len(block.Transactions))
+		// 	// fmt.Printf("Timestamp: %s\n", time.Unix(block.Timestamp, 0).Format(time.RFC3339))
+		// 	// fmt.Printf("Previous Hash: %s\n", block.PrevHash)
+		// 	// fmt.Println("Transactions:")
+		// 	for _, tx := range block.Transactions {
+		// 		fmt.Printf("  - ID: %s | Type: %s | Status: %s\n", tx.ID, tx.Type, tx.Status)
+		// 	}
+		// 	// Tambahkan garis pemisah antar block
+		// 	fmt.Println("--------------------------------------------------")
+		// }
 		return
 	}
 
@@ -295,4 +295,18 @@ func Iterate(fn func(tx *models.Tracker) error) error {
 		}
 	}
 	return nil
+}
+
+func RemoveDuplicateBlocks() {
+	seen := make(map[string]bool)
+	var cleaned []models.Block
+
+	for _, b := range Blockchain {
+		if !seen[b.Hash] {
+			seen[b.Hash] = true
+			cleaned = append(cleaned, b)
+		}
+	}
+	Blockchain = cleaned
+	fmt.Printf("[Blockchain] Duplicate blocks removed, %d retained\n", len(cleaned))
 }

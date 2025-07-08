@@ -75,10 +75,11 @@ func VerifyOtp(c *fiber.Ctx) error {
 		Name:     "authToken",
 		Value:    token,
 		HTTPOnly: true,
-		Secure:   false, // ubah jadi true kalau pakai HTTPS
+		Secure:   true, // ⬅️ WAJIB true jika pakai SameSite=None
 		Path:     "/",
 		MaxAge:   86400,
-		SameSite: "Lax", // atau "Strict" / "None" tergantung skenario
+		SameSite: "",                        // ⬅️ WAJIB "None" agar bisa cross-domain
+		Domain:   "docutrack.mmsgroup.test", // ⬅️ optional tapi bisa bantu konsisten
 	})
 
 	return c.JSON(fiber.Map{

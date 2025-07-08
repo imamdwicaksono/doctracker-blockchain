@@ -88,7 +88,9 @@ func UpdateCheckpointStatus(trackerID string, checkpointAddr string, evidenceHas
 
 	// Jika complete, broadcast ke miner
 	if allComplete {
-		go BroadcastToMempool(tracker)
+		// go BroadcastToMempool(tracker)
+
+		StartMinerWorker()
 	}
 
 	return nil

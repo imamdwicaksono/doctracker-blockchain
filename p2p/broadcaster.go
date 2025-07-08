@@ -8,19 +8,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-// Broadcast block baru ke semua peer
-func BroadcastNewBlock(block blockchain.Block) {
-	Broadcast("/p2p/block", block)
+func InitBroadcaster() {
+
 }
 
-// Broadcast tracker (mempool entry) ke semua peer
-func BroadcastToMempool(entry mempool.TrackerEntry) {
-	Broadcast("/p2p/mempool", entry)
+// Broadcast block baru ke semua peer
+func BroadcastNewBlock(block blockchain.Block) {
+	// Broadcast("/p2p/block", block)
+}
+
+func BroadcastTCP(messageType string, data interface{}) {
+	jsonData, _ := json.Marshal(map[string]interface{}{
+		"type": messageType,
+		"data": data,
+	})
+
+	for _, peer := range Peers {
+		go func(address string) {
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				fmt.Printf("[Broadcast] Failed to connect to %s\n", address)
+				return
+			}
+			defer conn.Close()
+			conn.Write(jsonData)
+		}(peer)
+	}
 }
 
 func Broadcast(path string, data interface{}) {

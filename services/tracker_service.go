@@ -4,7 +4,6 @@ import (
 	"doc-tracker/blockchain"
 	"doc-tracker/mempool"
 	"doc-tracker/models"
-	"doc-tracker/p2p"
 	"doc-tracker/utils"
 	"encoding/hex"
 	"fmt"
@@ -86,8 +85,6 @@ func CreateTracker(input models.Tracker) (models.Tracker, error) {
 
 	// Simpan ke mempool dan broadcast
 	mempool.Add(&input)
-	p2p.BroadcastToMempool(input)
-
 	return input, nil
 }
 

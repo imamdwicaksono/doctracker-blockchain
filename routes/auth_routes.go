@@ -2,10 +2,8 @@ package routes
 
 import (
 	"doc-tracker/controllers"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
 func SetupAuthRoutes(router fiber.Router) {
@@ -22,6 +20,6 @@ func SetupAuthProtectedRoutes(router fiber.Router) {
 	auth.Get("/qr/:address", controllers.GetQR)
 
 	meauth := router.Group("/auth")
-	meauth.Use(limiter.New(limiter.Config{Max: 10000, Expiration: time.Minute}))
-	meauth.Get("/me", controllers.AuthMe)
+	// meauth.Use(limiter.New(limiter.Config{Max: 10000, Expiration: time.Minute}))
+	meauth.Post("/me", controllers.AuthMe)
 }
