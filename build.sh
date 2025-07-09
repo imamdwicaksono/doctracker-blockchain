@@ -17,7 +17,7 @@ do
     fi
 
     echo "🔧 Building for $GOOS/$GOARCH..."
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o builds/$OUTPUT_NAME .
+    env GOOS=$GOOS GOARCH=$GOARCH go build -o  builds/$OUTPUT_NAME  cmd/main.go
 
     if [ $? -ne 0 ]; then
         echo "❌ Build failed for $GOOS/$GOARCH"
