@@ -42,10 +42,15 @@ func InitChain() {
 		// 	// Tambahkan garis pemisah antar block
 		// 	fmt.Println("--------------------------------------------------")
 		// }
+
 		return
 	}
 
 	// Buat genesis block jika tidak ada
+	if len(Blockchain) > 0 {
+		log.Println("⚠️ Blockchain already initialized, skipping genesis block creation")
+		return
+	}
 	genesis := CreateGenesisBlock()
 	Blockchain = append(Blockchain, genesis)
 
@@ -53,6 +58,7 @@ func InitChain() {
 	if err := saveEncryptedBlock(genesis); err != nil {
 		log.Printf("⚠️ Failed to save genesis block: %v", err)
 	}
+
 }
 
 // CreateGenesisBlock membuat block awal terenkripsi
@@ -79,6 +85,20 @@ func CheckDuplicateBlock(newBlock models.Block) bool {
 		}
 	}
 	return false // Block belum ada
+}
+
+func IsTrackerInBlockchain(trackerID string) bool {
+	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+
+	for _, block := range Blockchain {
+		for _, tx := range block.Transactions {
+			if tx.ID == trackerID {
+				return true // Tracker sudah ada di blockchain
+			}
+		}
+	}
+	return false // Tracker belum ada di blockchain
 }
 
 // MineNewBlock membuat block baru terenkripsi
@@ -298,9 +318,12 @@ func MineBlock(block *models.Block, difficulty int) {
 }
 
 // Iterate iterates over all transactions in the mempool and applies the given function.
-func Iterate(fn func(tx *models.Tracker) error) error {
+func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
 	for _, block := range GetAllBlocks() { // assuming mempool is a slice or map of *models.Transaction
 		for i := range block.Transactions {
+			if email_login != "" && block.Transactions[i].Creator != email_login {
+				continue // Hanya ambil tracker yang dibuat oleh user yang login
+			}
 			if err := fn(&block.Transactions[i]); err != nil {
 				return err
 			}

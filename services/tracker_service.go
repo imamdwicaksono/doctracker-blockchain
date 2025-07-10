@@ -11,6 +11,7 @@ import (
 	"time"
 
 	eciesgo "github.com/ecies/go/v2"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
@@ -88,13 +89,15 @@ func CreateTracker(input models.Tracker) (models.Tracker, error) {
 	return input, nil
 }
 
-func GetDataTracker() ([]models.Tracker, error) {
+func GetDataTrackerFromUserLogin(c *fiber.Ctx) ([]models.Tracker, error) {
 	var trackers []models.Tracker
+
+	email_login, _ := GetLoginEmail(c)
 	// Get from mempool
 	err := mempool.Iterate(func(tx *models.Tracker) error {
 		trackers = append(trackers, *tx)
 		return nil
-	})
+	}, email_login)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +105,7 @@ func GetDataTracker() ([]models.Tracker, error) {
 	errBlc := blockchain.Iterate(func(tx *models.Tracker) error {
 		trackers = append(trackers, *tx)
 		return nil
-	})
+	}, email_login)
 	if errBlc != nil {
 		return nil, errBlc
 	}
@@ -110,8 +113,31 @@ func GetDataTracker() ([]models.Tracker, error) {
 	return trackers, nil
 }
 
-func GetTrackers() ([]models.Tracker, error) {
-	trackers, err := GetDataTracker()
+func GetDataTracker() ([]models.Tracker, error) {
+	var trackers []models.Tracker
+
+	// Get from mempool
+	err := mempool.Iterate(func(tx *models.Tracker) error {
+		trackers = append(trackers, *tx)
+		return nil
+	}, "")
+	if err != nil {
+		return nil, err
+	}
+	// Get from blockchain
+	errBlc := blockchain.Iterate(func(tx *models.Tracker) error {
+		trackers = append(trackers, *tx)
+		return nil
+	}, "")
+	if errBlc != nil {
+		return nil, errBlc
+	}
+
+	return trackers, nil
+}
+
+func GetTrackers(c *fiber.Ctx) ([]models.Tracker, error) {
+	trackers, err := GetDataTrackerFromUserLogin(c)
 	if err != nil {
 		return nil, err
 	}
@@ -205,11 +231,11 @@ func GetTrackerSummary(email string) (map[string]int, error) {
 			summary[tracker.Status]++ // Tambahkan status tracker yang dibuat oleh email ini
 			continue                  // Lanjutkan ke tracker berikutnya jika ini adalah tracker yang dibuat oleh email
 		}
-		for _, cp := range tracker.Checkpoints {
-			if cp.Email == email {
-				summary[tracker.Status]++
-			}
-		}
+		// for _, cp := range tracker.Checkpoints {
+		// 	if cp.Email == email {
+		// 		summary[tracker.Status]++
+		// 	}
+		// }
 	}
 
 	return summary, nil

@@ -314,9 +314,15 @@ func Exists(id string) bool {
 }
 
 // Iterate iterates over all transactions in the mempool and applies the given function.
-func Iterate(fn func(tx *models.Tracker) error) error {
+func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
 
 	for _, tx := range mempool { // assuming mempool is a slice or map of *models.Transaction
+		if tx.Status != "progress" {
+			continue // Hanya iterasi tracker yang sedang dalam progress
+		}
+		if email_login != "" && tx.Creator != email_login {
+			continue // Hanya iterasi tracker yang dibuat oleh email ini
+		}
 		if err := fn(tx); err != nil {
 			return err
 		}

@@ -5,6 +5,7 @@ import (
 	"doc-tracker/mempool"
 	"doc-tracker/models"
 	"doc-tracker/p2p"
+	"fmt"
 	"time"
 )
 
@@ -18,6 +19,7 @@ func StartMinerWorker() {
 				continue
 			}
 
+			trackerIdList := make([]string, len(trackerList))
 			// Mine block
 			trackers := make([]models.Tracker, len(trackerList))
 			for i, t := range trackerList {
@@ -25,10 +27,16 @@ func StartMinerWorker() {
 			}
 			// newBlock := blockchain.NewBlockFromTransactions(trackers)
 
-			// Filter duplikat tracker
-			if FilterDuplicateTrackers(trackers) == nil {
+			for _, t := range trackerList {
+				trackerIdList = append(trackerIdList, t.ID)
+			}
+
+			if CheckDuplicateTracker(trackerIdList) {
+				fmt.Println("Duplicate tracker found, skipping mining")
 				continue
 			}
+
+			fmt.Printf("Mining new block with transactions: %v\n", trackerIdList)
 			// Tambahkan ke chain lokal
 			mine, error := blockchain.MineNewBlock(trackers)
 
@@ -52,4 +60,13 @@ func FilterDuplicateTrackers(trackers []models.Tracker) []models.Tracker {
 		}
 	}
 	return filtered
+}
+
+func CheckDuplicateTracker(trackerIdList []string) bool {
+	for _, id := range trackerIdList {
+		if blockchain.IsTrackerInBlockchain(id) {
+			return true // Tracker sudah ada di blockchain
+		}
+	}
+	return false // Tidak ada duplikat di blockchain
 }

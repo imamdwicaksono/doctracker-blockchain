@@ -33,11 +33,13 @@ func CreateTracker(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Email is required for the first checkpoint"})
 	}
 
-	tracker, err := services.CreateTracker(input)
+	data, err := services.CreateTracker(input)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create tracker"})
 	}
-	return c.JSON(tracker)
+
+	response := fiber.Map{"status": 201, "message": "Tracker created successfully", "data": data}
+	return c.JSON(response)
 }
 
 // GetTrackers godoc
@@ -49,7 +51,7 @@ func CreateTracker(c *fiber.Ctx) error {
 // @Failure     500 {object} map[string]string
 // @Router      /trackers [get]
 func GetTrackers(c *fiber.Ctx) error {
-	trackers, err := services.GetTrackers()
+	trackers, err := services.GetTrackers(c)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch trackers"})
 	}

@@ -134,16 +134,22 @@ func Logout(c *fiber.Ctx) error {
 		}
 	}
 
+	// Clear cookie
+	c.ClearCookie("authToken") // Nama cookie authToken
 	// Hapus cookie (opsional jika pakai header)
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
 		HTTPOnly: true,
+		Secure:   true, // ⬅️ WAJIB true jika pakai SameSite=None
+		Path:     "/",
+		MaxAge:   86400,
+		SameSite: "",                        // ⬅️ WAJIB "None" agar bisa cross-domain
+		Domain:   "docutrack.mmsgroup.test", // ⬅️ optional tapi bisa bantu konsisten
 	})
 
 	return c.JSON(fiber.Map{
+		"status":  200,
 		"message": "Logged out successfully",
 	})
 }
