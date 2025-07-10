@@ -19,10 +19,13 @@ func MinePendingTrackers() models.Block {
 		trackers = append(trackers, *t)
 	}
 	block, _ := blockchain.MineNewBlock(trackers)
+	if blockchain.CheckDuplicateBlock(block) {
+		return models.Block{} // Block sudah ada, tidak perlu dibuat lagi
+	}
 	mempool.Clear()
 
 	// TODO: Kirim ke peer (sync P2P)
-	p2p.Broadcast("/p2p/block", block)
+	p2p.BroadcastNewBlock(block)
 
 	return block
 }

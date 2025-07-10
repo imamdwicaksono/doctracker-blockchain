@@ -2,9 +2,9 @@ package p2p
 
 import (
 	"bytes"
-	"doc-tracker/blockchain"
 	"doc-tracker/mempool"
 	"doc-tracker/models"
+	"doc-tracker/utils"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -19,8 +19,13 @@ func InitBroadcaster() {
 }
 
 // Broadcast block baru ke semua peer
-func BroadcastNewBlock(block blockchain.Block) {
+func BroadcastNewBlock(block models.Block) {
 	// Broadcast("/p2p/block", block)
+	peers := GetPeers()
+	for _, peer := range peers {
+		protoBlock := utils.ConvertToProtoBlock(block)
+		BroadcastToPeer(peer, protoBlock)
+	}
 }
 
 func BroadcastTCP(messageType string, data interface{}) {

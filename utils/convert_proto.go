@@ -98,3 +98,64 @@ func ConvertToProto(b models.Block) *pb.Block {
 		}(),
 	}
 }
+
+func ConvertToProtoBlockList(blocks []models.Block) *pb.BlockList {
+	blockList := &pb.BlockList{
+		Blocks: make([]*pb.Block, len(blocks)),
+	}
+
+	for i, block := range blocks {
+		blockList.Blocks[i] = ConvertToProto(block)
+	}
+
+	return blockList
+}
+
+func ConvertToProtoBlock(block models.Block) *pb.Block {
+	return &pb.Block{
+		Hash:      block.Hash,
+		PrevHash:  block.PrevHash,
+		Index:     int32(block.Index),
+		Timestamp: block.Timestamp,
+		Nonce:     int32(block.Nonce),
+		Transactions: func() []*pb.Tracker {
+			txs := make([]*pb.Tracker, len(block.Transactions))
+			for i, tx := range block.Transactions {
+				txs[i] = &pb.Tracker{
+					Id:             tx.ID,
+					Creator:        tx.Creator,
+					Type:           tx.Type,
+					Privacy:        tx.Privacy,
+					CreatorAddr:    tx.CreatorAddr,
+					CreatedAt:      tx.CreatedAt,
+					TargetEnd:      tx.TargetEnd,
+					Status:         tx.Status,
+					EncryptedNotes: tx.EncryptedNotes,
+					Checkpoints:    ConvertToProtoCheckpoints(tx.Checkpoints),
+				}
+			}
+			return txs
+		}(),
+	}
+}
+
+func ConvertToProtoCheckpoints(checkpoints []models.Checkpoint) []*pb.Checkpoint {
+	cpList := make([]*pb.Checkpoint, len(checkpoints))
+	for i, cp := range checkpoints {
+		cpList[i] = &pb.Checkpoint{
+			Email:         cp.Email,
+			Type:          cp.Type,
+			Company:       cp.Company,
+			Role:          cp.Role,
+			IsViewable:    cp.IsViewable,
+			Note:          cp.Note,
+			EncryptedNote: cp.EncryptedNote,
+			Address:       cp.Address,
+			EvidenceHash:  cp.EvidenceHash,
+			EvidencePath:  cp.EvidencePath,
+			IsCompleted:   cp.IsCompleted,
+			CompletedAt:   cp.CompletedAt,
+		}
+	}
+	return cpList
+}

@@ -5,3 +5,5 @@ storage/evidence/*
 *.tmp
 *.bak
 wallet/mnemonic/*
+
+logs/*

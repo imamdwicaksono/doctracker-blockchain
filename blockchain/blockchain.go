@@ -69,6 +69,18 @@ func CreateGenesisBlock() models.Block {
 	return genesis
 }
 
+func CheckDuplicateBlock(newBlock models.Block) bool {
+	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+
+	for _, block := range Blockchain {
+		if block.Hash == newBlock.Hash {
+			return true // Block sudah ada
+		}
+	}
+	return false // Block belum ada
+}
+
 // MineNewBlock membuat block baru terenkripsi
 func MineNewBlock(transactions []models.Tracker) (models.Block, error) {
 	prev := GetLastBlock()

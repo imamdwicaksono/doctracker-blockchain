@@ -69,6 +69,7 @@ func main() {
 	services.StartSyncWorker()
 	fmt.Println("[Sync] Worker started")
 
+	killProcessOnPort(3003)
 	go grpc.StartGRPCServer("3003")
 	fmt.Println("[GRPC] Server started on port 3003")
 
