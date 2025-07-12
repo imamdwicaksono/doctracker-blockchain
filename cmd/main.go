@@ -31,11 +31,12 @@ import (
 // @host            localhost:8080
 // @BasePath        /
 func main() {
+	// Try load .env for local dev, ignore in production
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading .env file")
-		return
+		fmt.Println("No .env file found, assuming Railway env")
 	}
+
 	fmt.Println("[Init] Starting Doc-Tracker Node...")
 
 	redis.InitRedis()
