@@ -8,6 +8,7 @@ import (
 	"doc-tracker/utils"
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -70,16 +71,20 @@ func VerifyOtp(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
 	}
 
+	maxAge := 0
+	if v := os.Getenv("COOKIE_MAX_AGE"); v != "" {
+		fmt.Sscanf(v, "%d", &maxAge)
+	}
 	// Set cookie
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    token,
 		HTTPOnly: true,
-		Secure:   true, // ⬅️ WAJIB true jika pakai SameSite=None
-		Path:     "/",
-		MaxAge:   86400,
-		SameSite: "",                        // ⬅️ WAJIB "None" agar bisa cross-domain
-		Domain:   "docutrack.mmsgroup.test", // ⬅️ optional tapi bisa bantu konsisten
+		Secure:   os.Getenv("COOKIE_SECURE") == "true", // ⬅️ WAJIB true jika pakai SameSite=None
+		Path:     os.Getenv("COOKIE_PATH"),
+		MaxAge:   maxAge,                          // ⬅️ WAJIB sesuai dengan TTL token
+		SameSite: os.Getenv("COOKIE_SAMESITE"),    // ⬅️ WAJIB "None" agar bisa cross-domain
+		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
 	})
 
 	return c.JSON(fiber.Map{
@@ -137,15 +142,19 @@ func Logout(c *fiber.Ctx) error {
 	// Clear cookie
 	c.ClearCookie("authToken") // Nama cookie authToken
 	// Hapus cookie (opsional jika pakai header)
+	maxAge := 0
+	if v := os.Getenv("COOKIE_MAX_AGE"); v != "" {
+		fmt.Sscanf(v, "%d", &maxAge)
+	}
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    "",
 		HTTPOnly: true,
-		Secure:   true, // ⬅️ WAJIB true jika pakai SameSite=None
-		Path:     "/",
-		MaxAge:   86400,
-		SameSite: "",                        // ⬅️ WAJIB "None" agar bisa cross-domain
-		Domain:   "docutrack.mmsgroup.test", // ⬅️ optional tapi bisa bantu konsisten
+		Secure:   os.Getenv("COOKIE_SECURE") == "true", // ⬅️ WAJIB true jika pakai SameSite=None
+		Path:     os.Getenv("COOKIE_PATH"),
+		MaxAge:   maxAge,                          // ⬅️ WAJIB sesuai dengan TTL token
+		SameSite: os.Getenv("COOKIE_SAMESITE"),    // ⬅️ WAJIB "None" agar bisa cross-domain
+		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
 	})
 
 	return c.JSON(fiber.Map{
