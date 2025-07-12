@@ -133,8 +133,9 @@ func main() {
 		return
 	}
 	killProcessOnPort(portInt)
-	err = app.Listen(":" + port)
+
 	fmt.Println("[Server] Listening on :", port)
+	err = app.Listen(":" + port)
 	if err != nil {
 		fmt.Println("Server error:", err)
 
