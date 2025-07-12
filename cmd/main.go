@@ -124,20 +124,21 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ""
-		portInt, err := strconv.Atoi(port)
-		if err != nil {
-			fmt.Println("Invalid port:", port)
-			return
-		}
-		killProcessOnPort(portInt)
-		err = app.Listen(":" + port)
-		fmt.Println("[Server] Listening on :", port)
-		if err != nil {
-			fmt.Println("Server error:", err)
+		port = "3002"
+	}
+	// Start the Fiber app
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		fmt.Println("Invalid port:", port)
+		return
+	}
+	killProcessOnPort(portInt)
+	err = app.Listen(":" + port)
+	fmt.Println("[Server] Listening on :", port)
+	if err != nil {
+		fmt.Println("Server error:", err)
 
-			return
-		}
+		return
 	}
 
 	app.Use(func(c *fiber.Ctx) error {
