@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -26,12 +27,14 @@ func GetOtpFromMemoryOrRedis(email string) string {
 	return otp
 }
 
-func StoreOtpInMemoryOrRedis(email, otp string) {
+func StoreOtpInMemoryOrRedis(email, otp string) error {
 	key := "otp:" + email
 	err := Client.Set(Ctx, key, otp, 0).Err()
 	if err != nil {
-		panic(err) // Gagal menyimpan OTP ke Redis
+		fmt.Println("❌ Failed storing OTP:", err)
+		return err
 	}
+	return nil
 }
 
 func BlacklistToken(token string, ttl time.Duration) error {
