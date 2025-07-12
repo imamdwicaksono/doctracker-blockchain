@@ -76,12 +76,14 @@ func VerifyOtp(c *fiber.Ctx) error {
 
 	// Hapus OTP setelah digunakan
 	redis.Client.Del(redis.Ctx, "otp:"+req.Email)
+	fmt.Println("✅ OTP verified successfully, removing from cache")
 
 	// Buat JWT token
 	token, expUnix, err := jwt.GenerateJWT(req.Email)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
 	}
+	fmt.Println("✅ JWT token generated successfully")
 
 	maxAge := 0
 	if v := os.Getenv("COOKIE_MAX_AGE"); v != "" {
@@ -98,6 +100,10 @@ func VerifyOtp(c *fiber.Ctx) error {
 		SameSite: os.Getenv("COOKIE_SAMESITE"),    // ⬅️ WAJIB "None" agar bisa cross-domain
 		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
 	})
+	fmt.Printf("✅ Cookie set with token, expires at %d\n", expUnix)
+	fmt.Printf("Cookie details: Name=%s, Value=%s, MaxAge=%d, Secure=%t, SameSite=%s, Domain=%s\n",
+		"authToken", token, maxAge, os.Getenv("COOKIE_SECURE") == "true", os.Getenv("COOKIE_SAMESITE"), os.Getenv("COOKIE_DOMAIN_NAME"))
+	fmt.Println("✅ OTP verified successfully, token set in cookie")
 
 	return c.JSON(fiber.Map{
 		"status":  200,
