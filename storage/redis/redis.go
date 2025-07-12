@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -12,8 +13,12 @@ var Ctx = context.Background()
 var Client *redis.Client
 
 func InitRedis() {
+	redisAddr := os.Getenv("REDIS_URL")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
 	Client = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: redisAddr, // Gunakan REDIS_URL dari env, fallback ke localhost
 		DB:   0,
 	})
 }
