@@ -23,6 +23,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
@@ -88,19 +89,16 @@ func main() {
 	// 	allowedOrigins = "https://production.com"
 	// }
 
-	// app.Use(cors.New(cors.Config{
-	// 	AllowOriginsFunc: func(origin string) bool {
-	// 		return origin == "http://docutrack.test" ||
-	// 			origin == "http://172.24.4.25:3000" ||
-	// 			origin == "http://localhost:3000" ||
-	// 			origin == "http://blockchain.mmsgroup.co.id:3000"
-	// 	},
-	// 	AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
-	// 	AllowHeaders:     "Origin, Content-Type, Accept, Authorization", // ⚠️ jangan tambahkan `credentials`
-	// 	ExposeHeaders:    "Content-Length",
-	// 	AllowCredentials: true,
-	// 	MaxAge:           12 * 3600,
-	// }))
+	if os.Getenv("ALLOWED_ORIGIN") != "" {
+		app.Use(cors.New(cors.Config{
+			AllowOrigins:     os.Getenv("ALLOWED_ORIGIN"), // Set allowed origins from env
+			AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+			AllowHeaders:     "Origin, Content-Type, Accept, Authorization", // ⚠️ jangan tambahkan `credentials`
+			ExposeHeaders:    "Content-Length",
+			AllowCredentials: true,
+			MaxAge:           12 * 3600,
+		}))
+	}
 
 	app.Use(func(c *fiber.Ctx) error {
 		fmt.Printf("👉 [%s] %s from %s\n", c.Method(), c.Path(), c.Get("Origin"))
