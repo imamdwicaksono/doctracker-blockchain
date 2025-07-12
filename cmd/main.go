@@ -8,6 +8,7 @@ import (
 	"doc-tracker/routes"
 	"doc-tracker/services"
 	"doc-tracker/storage/redis"
+	"doc-tracker/utils"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,6 +37,10 @@ func main() {
 	if err != nil {
 		fmt.Println("No .env file found, assuming Railway env")
 	}
+
+	fmt.Println("✅ Checking and creating ECDSA keys if not exist...")
+	utils.CreatePemIfNotExists("data/private.pem")
+	utils.CreatePemIfNotExists("data/public.pem")
 
 	fmt.Println("[Init] Starting Doc-Tracker Node...")
 

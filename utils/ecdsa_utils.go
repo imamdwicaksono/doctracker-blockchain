@@ -2,6 +2,8 @@ package utils
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -49,4 +51,30 @@ func LoadECDSAPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 	}
 
 	return priv, nil
+}
+
+func CreatePemIfNotExists(path string) error {
+	// save
+	privKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return fmt.Errorf("file already exists: %s", path)
+	}
+
+	privBytes, _ := x509.MarshalECPrivateKey(privKey)
+	privPem := &pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: privBytes,
+	}
+	_ = os.WriteFile("data/private.pem", pem.EncodeToMemory(privPem), 0600)
+
+	pubBytes, _ := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+	pubPem := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubBytes,
+	}
+	_ = os.WriteFile("data/public.pem", pem.EncodeToMemory(pubPem), 0644)
+
+	println("✅ Kunci berhasil dibuat ke data/public.pem dan private.pem")
+	return nil
 }
