@@ -17,10 +17,12 @@ func InitRedis() {
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
 	}
-	Client = redis.NewClient(&redis.Options{
-		Addr: redisAddr, // Gunakan REDIS_URL dari env, fallback ke localhost
-		DB:   0,
-	})
+	opt, err := redis.ParseURL(redisAddr)
+	if err != nil {
+		fmt.Println("❌ Failed to parse Redis URL:", err)
+		return
+	}
+	Client = redis.NewClient(opt)
 }
 
 func GetOtpFromMemoryOrRedis(email string) string {
