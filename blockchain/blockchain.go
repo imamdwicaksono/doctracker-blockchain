@@ -157,6 +157,10 @@ func saveEncryptedBlock(block models.Block) error {
 	}
 
 	// 4. Simpan ke file terpisah per block
+	if err := os.MkdirAll("data/blocks", 0755); err != nil {
+		return fmt.Errorf("failed to create blocks directory: %v", err)
+	}
+	// Gunakan index sebagai nama file
 	blockFile := fmt.Sprintf("data/blocks/%d.bin", block.Index)
 	if err := os.WriteFile(blockFile, encryptedData, 0600); err != nil {
 		return fmt.Errorf("write failed: %v", err)
