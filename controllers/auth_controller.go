@@ -37,17 +37,29 @@ func Login(c *fiber.Ctx) error {
 func SendOtp(c *fiber.Ctx) error {
 	var req models.OtpRequest
 	if err := c.BodyParser(&req); err != nil {
+		fmt.Println("❌ BodyParser failed:", err)
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request")
 	}
 
+	if req.Email == "" {
+		fmt.Println("❌ Email kosong")
+		return fiber.NewError(fiber.StatusBadRequest, "Email is required")
+	}
+
 	otp := fmt.Sprintf("%06d", rand.Intn(1000000))
-	redis.StoreOtpInMemoryOrRedis(req.Email, otp)
+	fmt.Printf("📨 Sending OTP %s to %s\n", otp, req.Email)
+
+	if err := redis.StoreOtpInMemoryOrRedis(req.Email, otp); err != nil {
+		fmt.Println("❌ Failed storing OTP:", err)
+	}
 
 	// Kirim ke email (SMTP)
 	if err := utils.SendEmailOTP(req.Email, otp); err != nil {
+		fmt.Println("❌ Failed to send email:", err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to send email")
 	}
 
+	fmt.Println("✅ OTP sent successfully")
 	return c.JSON(fiber.Map{"status": 200, "message": "OTP sent successfully"})
 }
 
