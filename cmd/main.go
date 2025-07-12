@@ -124,7 +124,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3002"
+		port = ""
 		portInt, err := strconv.Atoi(port)
 		if err != nil {
 			fmt.Println("Invalid port:", port)
