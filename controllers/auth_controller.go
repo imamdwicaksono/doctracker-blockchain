@@ -96,9 +96,9 @@ func VerifyOtp(c *fiber.Ctx) error {
 		HTTPOnly: true,
 		Secure:   os.Getenv("COOKIE_SECURE") == "true", // ⬅️ WAJIB true jika pakai SameSite=None
 		Path:     os.Getenv("COOKIE_PATH"),
-		MaxAge:   maxAge,                       // ⬅️ WAJIB sesuai dengan TTL token
-		SameSite: os.Getenv("COOKIE_SAMESITE"), // ⬅️ WAJIB "None" agar bisa cross-domain
-		// Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
+		MaxAge:   maxAge,                          // ⬅️ WAJIB sesuai dengan TTL token
+		SameSite: os.Getenv("COOKIE_SAMESITE"),    // ⬅️ WAJIB "None" agar bisa cross-domain
+		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
 	})
 	fmt.Printf("✅ Cookie set with token, expires at %d\n", expUnix)
 	fmt.Printf("Cookie details: Name=%s, Value=%s, MaxAge=%d, Secure=%t, SameSite=%s, Domain=%s\n",
