@@ -1,5 +1,11 @@
 .env
-data/
+data/*.pem
+data/private.pem
+data/public.pem
+data/private.key
+data/public.key
+data/blocks/*.bin
+data/*.bin
 storage/evidence/*
 *.log
 *.tmp
