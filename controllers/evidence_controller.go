@@ -3,9 +3,11 @@ package controllers
 import (
 	"crypto/sha256"
 	"doc-tracker/services"
+	"doc-tracker/storage"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
 
@@ -64,27 +66,37 @@ func UploadEvidence(c *fiber.Ctx) error {
 }
 
 func ViewEvidence(c *fiber.Ctx) error {
-	hash := c.Query("hash") // ambil parameter hash dari query string
+	hash := c.Query("hash")
 	if hash == "" {
 		return c.Status(400).SendString("Missing image hash")
 	}
 
 	track, err := services.GetTrackerByHash(hash)
 	if err != nil {
-		return c.Status(404).SendString("Tracker not found" + err.Error())
+		return c.Status(404).SendString("Tracker not found: " + err.Error())
 	}
-
-	// fmt.Printf("Tracker found: %s with hash %s\n", track.ID, hash)
-	// fmt.Printf("Tracker checkpoints: %d\n", len(track.Checkpoints))
 
 	filePath := services.GetEvidencePath(track, hash)
-	// fmt.Printf("Evidence file path: %s\n", filePath)
 
-	// Validasi file ada
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return c.Status(404).SendString("Image not found" + filePath)
+	if os.Getenv("S3_STORAGE") == "true" {
+		key := filepath.Base(filePath)
+		content, err := storage.S3.DownloadS3File(key)
+		if err != nil {
+			return c.Status(404).SendString("Evidence not found on S3: " + err.Error())
+		}
+
+		ext := filepath.Ext(filePath)
+		mimeType := mime.TypeByExtension(ext)
+		if mimeType != "" {
+			c.Set("Content-Type", mimeType)
+		}
+
+		return c.Send(content)
 	}
 
-	// Set Content-Type otomatis
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return c.Status(404).SendString("File not found: " + filePath)
+	}
+
 	return c.SendFile(filePath)
 }
