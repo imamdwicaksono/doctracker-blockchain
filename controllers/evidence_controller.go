@@ -77,6 +77,7 @@ func ViewEvidence(c *fiber.Ctx) error {
 	}
 
 	filePath := services.GetEvidencePath(track, hash)
+	fmt.Printf("Load File from path: %s\n", filePath)
 
 	if os.Getenv("S3_STORAGE") == "true" {
 		key := filepath.Base(filePath)
