@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"doc-tracker/blockchain"
 	"doc-tracker/grpc"
 	"doc-tracker/mempool"
 	"doc-tracker/middlewares"
 	"doc-tracker/routes"
 	"doc-tracker/services"
+	"doc-tracker/storage"
 	"doc-tracker/storage/redis"
 	"doc-tracker/utils"
 	"fmt"
@@ -75,6 +77,10 @@ func main() {
 
 	services.StartSyncWorker()
 	fmt.Println("[Sync] Worker started")
+
+	ctx := context.Background()
+	storage.S3 = storage.InitializeS3Storage(ctx)
+	fmt.Println("[S3] Storage initialized")
 
 	killProcessOnPort(3003)
 	go grpc.StartGRPCServer("3003")

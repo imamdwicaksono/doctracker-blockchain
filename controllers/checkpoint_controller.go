@@ -3,7 +3,8 @@ package controllers
 import (
 	"doc-tracker/models"
 	"doc-tracker/services"
-	"fmt"
+	"log"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -21,47 +22,39 @@ import (
 // @Router      /checkpoint/complete [post]
 func CompleteCheckpoint(c *fiber.Ctx) error {
 	var body models.CheckpointStatusInput
-
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
 	}
-
-	if body.TrackerID == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "tracker_id is required"})
+	if body.TrackerID == "" || body.Email == "" || body.Evidence == nil || *body.Evidence == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "tracker_id, email, and base64 evidence are required"})
 	}
 
-	if body.Email == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "email is required"})
-	}
-
-	if *body.Evidence == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "base64 string is required"})
-	}
-	fmt.Printf("Received base64 evidence for tracker %s at checkpoint %s\n", body.TrackerID, body.Email)
-
-	// formFile, err := services.SaveBase64Evidence(body.TrackerID, checkpointAddr, body.Evidence)
-	// if err != nil {
-	// 	return c.Status(400).JSON(fiber.Map{"error": "invalid base64 file"})
-	// }
-	// fmt.Printf("Evidence file saved for tracker %s at checkpoint %s: %s\n", body.TrackerID, checkpointAddr, formFile)
-	checkPointAddr := services.GetCheckpointAddressByEmail(body.TrackerID, body.Email)
-	if checkPointAddr == "" {
+	checkpointAddr := services.GetCheckpointAddressByEmail(body.TrackerID, body.Email)
+	if checkpointAddr == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "checkpoint address not found"})
 	}
 
-	info, err := services.SaveEvidenceFile(body.TrackerID, checkPointAddr, body.Evidence)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error save evidence": err.Error()})
-	}
-	fmt.Printf("Evidence file processed for tracker %s at checkpoint %s: %s, hash: %s\n", body.TrackerID, checkPointAddr, info.Path, info.Hash)
+	var (
+		info  services.EvidenceInfo
+		err   error
+		useS3 = os.Getenv("S3_STORAGE") == "true"
+	)
 
-	err = services.UpdateCheckpointStatus(body.TrackerID, checkPointAddr, info.Hash, info.Path)
+	if useS3 {
+		info, err = services.SaveEvidenceBase64ToS3(body.TrackerID, checkpointAddr, body.Evidence)
+	} else {
+		info, err = services.SaveEvidenceFileLocal(body.TrackerID, checkpointAddr, body.Evidence)
+	}
 	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Printf("[Evidence] tracker=%s checkpoint=%s saved path=%s hash=%s", body.TrackerID, checkpointAddr, info.Path, info.Hash)
+
+	if err := services.UpdateCheckpointStatus(body.TrackerID, checkpointAddr, info.Hash, info.Path); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error update": err.Error()})
 	}
-	fmt.Printf("Checkpoint status updated for tracker %s at checkpoint %s with hash %s\n", body.TrackerID, checkPointAddr, info.Hash)
-	fmt.Printf("Evidence file path: %s\n", info.Path)
-	fmt.Printf("Evidence file hash: %s\n", info.Hash)
+
 	return c.JSON(fiber.Map{
 		"status":        "checkpoint complete",
 		"evidence_hash": info.Hash,
