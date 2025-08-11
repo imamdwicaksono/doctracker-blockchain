@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -36,6 +37,10 @@ func InitializeS3Storage(ctx context.Context) *S3Storage {
 		}, nil
 	})
 
+	fmt.Printf("S3 Endpoint: %s\n", endpoint)
+	fmt.Printf("S3 Bucket: %s\n", bucket)
+	fmt.Printf("S3 Access Key: %s\n", accessKey)
+
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion("us-east-1"),
 		config.WithEndpointResolver(customResolver),
@@ -45,7 +50,10 @@ func InitializeS3Storage(ctx context.Context) *S3Storage {
 		log.Fatalf("failed to load AWS config: %v", err)
 	}
 
-	client := s3.NewFromConfig(cfg)
+	// ✅ Tambahkan o.UsePathStyle = true di sini
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
+	})
 
 	return &S3Storage{
 		ctx:    ctx,

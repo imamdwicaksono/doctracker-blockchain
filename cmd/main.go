@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -35,10 +36,29 @@ import (
 // @host            localhost:8080
 // @BasePath        /
 func main() {
+
+	wd, _ := os.Getwd()
+	envPath := filepath.Join(wd, ".env")
+
+	fmt.Println("📂 Working directory:", wd)
+	fmt.Println("🔍 Loading .env from:", envPath)
+
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		fmt.Println("❌ .env file does not exist at path:", envPath)
+	} else {
+		if err := godotenv.Overload(envPath); err != nil {
+			fmt.Println("❌ Failed to load .env:", err)
+		} else {
+			fmt.Println("✅ .env loaded from:", envPath)
+		}
+	}
+
 	// Try load .env for local dev, ignore in production
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Println("No .env file found, assuming Railway env")
+	} else {
+		fmt.Println("✅ .env file loaded successfully")
 	}
 
 	fmt.Println("✅ Checking and creating ECDSA keys if not exist...")
