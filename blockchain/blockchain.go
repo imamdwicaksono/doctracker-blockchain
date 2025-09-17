@@ -323,12 +323,35 @@ func MineBlock(block *models.Block, difficulty int) {
 
 // Iterate iterates over all transactions in the mempool and applies the given function.
 func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
-	for _, block := range GetAllBlocks() { // assuming mempool is a slice or map of *models.Transaction
+	for _, block := range GetAllBlocks() {
 		for i := range block.Transactions {
-			if email_login != "" && block.Transactions[i].Creator != email_login {
-				continue // Hanya ambil tracker yang dibuat oleh user yang login
+			tx := &block.Transactions[i]
+
+			// Jika email_login diberikan, cek:
+			// 1. creator sama dengan email_login
+			// 2. atau email_login terdaftar di checkpoint
+			include := false
+			if email_login != "" {
+				if tx.Creator == email_login {
+					include = true
+				} else {
+					for _, cp := range tx.Checkpoints {
+						if cp.Email == email_login {
+							include = true
+							break
+						}
+					}
+				}
+			} else {
+				// jika email_login kosong, ambil semua
+				include = true
 			}
-			if err := fn(&block.Transactions[i]); err != nil {
+
+			if !include {
+				continue
+			}
+
+			if err := fn(tx); err != nil {
 				return err
 			}
 		}

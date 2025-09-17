@@ -316,13 +316,32 @@ func Exists(id string) bool {
 // Iterate iterates over all transactions in the mempool and applies the given function.
 func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
 
-	for _, tx := range mempool { // assuming mempool is a slice or map of *models.Transaction
-		if tx.Status != "progress" {
-			continue // Hanya iterasi tracker yang sedang dalam progress
+	for _, tx := range mempool { // assuming mempool is a slice of *models.Tracker
+		include := false
+
+		if email_login == "" {
+			include = true // ambil semua jika email kosong
+		} else if tx.Creator == email_login {
+			include = true // ambil jika dia creator
+		} else {
+			// cek jika email_login ada di checkpoint
+			for _, cp := range tx.Checkpoints {
+				if cp.Email == email_login {
+					include = true
+					break
+				}
+			}
 		}
-		if email_login != "" && tx.Creator != email_login {
-			continue // Hanya iterasi tracker yang dibuat oleh email ini
+
+		if !include {
+			continue
 		}
+
+		// optional: hanya iterasi tracker yang sedang progress
+		// if tx.Status != "progress" {
+		//     continue
+		// }
+
 		if err := fn(tx); err != nil {
 			return err
 		}

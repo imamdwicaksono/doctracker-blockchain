@@ -1,14 +1,12 @@
 package main
 
 import (
-	"context"
 	"doc-tracker/blockchain"
 	"doc-tracker/grpc"
 	"doc-tracker/mempool"
 	"doc-tracker/middlewares"
 	"doc-tracker/routes"
 	"doc-tracker/services"
-	"doc-tracker/storage"
 	"doc-tracker/storage/redis"
 	"doc-tracker/utils"
 	"fmt"
@@ -87,6 +85,14 @@ func main() {
 	}
 	fmt.Println("[Mempool] Mempool loaded")
 
+	// for _, tracker := range mempool.GetAll() {
+	// 	fmt.Printf(" - Tracker ID: %s | Type: %s | Status: %s | Checkpoints: %d\n", tracker.ID, tracker.Type, tracker.Status, len(tracker.Checkpoints))
+	// }
+
+	// for _, block := range blockchain.Blockchain {
+	// 	fmt.Printf(" - Block #%d | Hash: %s | Encrypted: %t | Transactions: %d\n", block.Index, block.Hash, block.Encrypted, len(block.Transactions))
+	// }
+
 	mempool.RemoveDuplicateEntries()
 	fmt.Println("[Mempool] Duplicate entries removed")
 	blockchain.RemoveDuplicateBlocks()
@@ -98,9 +104,9 @@ func main() {
 	services.StartSyncWorker()
 	fmt.Println("[Sync] Worker started")
 
-	ctx := context.Background()
-	storage.S3 = storage.InitializeS3Storage(ctx)
-	fmt.Println("[S3] Storage initialized")
+	// ctx := context.Background()
+	// storage.S3 = storage.InitializeS3Storage(ctx)
+	// fmt.Println("[S3] Storage initialized")
 
 	killProcessOnPort(3003)
 	go grpc.StartGRPCServer("3003")
