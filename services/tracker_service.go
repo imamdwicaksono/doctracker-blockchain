@@ -12,13 +12,27 @@ import (
 
 	eciesgo "github.com/ecies/go/v2"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
 var trackerMap = map[string]models.Tracker{}
 
 const trackerFile = "data/trackers.json"
+
+var (
+	idCounters = make(map[string]int)
+)
+
+func GenerateTrackerID() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	date := time.Now().Format("20060102") // YYYYMMDD
+	idCounters[date]++
+	counter := idCounters[date]
+
+	return fmt.Sprintf("TRK-%s-%06d", date, counter)
+}
 
 func init() {
 	err := godotenv.Load()
@@ -59,7 +73,7 @@ func init() {
 }
 
 func CreateTracker(input models.Tracker) (models.Tracker, error) {
-	input.ID = uuid.New().String()
+	// input.ID = uuid.New().String()
 	input.CreatedAt = time.Now().Unix()
 	input.Status = "progress"
 
@@ -67,20 +81,36 @@ func CreateTracker(input models.Tracker) (models.Tracker, error) {
 	senderWallet := GetOrCreateWallet(input.Creator)
 	input.CreatorAddr = senderWallet.Address
 
-	// Enkripsi checkpoint jika perlu
+	input.ID = GenerateTrackerID()
+	// Iterasi tiap checkpoint
 	for i, cp := range input.Checkpoints {
-		receiverWallet := GetOrCreateWallet(cp.Email)
-		input.Checkpoints[i].Address = receiverWallet.Address
+		var checkpointAddresses []string
+		var encryptedNotes = make(map[string]string)
 
-		// Jika boleh melihat isi dokumen, enkripsi
-		if cp.IsViewable {
-			encrypted := utils.EncryptWithPublicKey(cp.Note, receiverWallet.PublicKey)
-			input.Checkpoints[i].EncryptedNote = encrypted
-			input.Checkpoints[i].Note = "" // kosongkan untuk keamanan
-		} else {
-			// Tidak boleh melihat, kosongkan isinya
-			input.Checkpoints[i].Note = ""
-			input.Checkpoints[i].EncryptedNote = ""
+		// Iterasi tiap email dalam checkpoint
+		for _, email := range cp.Emails {
+			if email == "" {
+				continue
+			}
+
+			receiverWallet := GetOrCreateWallet(email)
+			checkpointAddresses = append(checkpointAddresses, receiverWallet.Address)
+
+			// Jika boleh melihat isi dokumen, enkripsi per penerima
+			if cp.IsViewable {
+				encrypted := utils.EncryptWithPublicKey(cp.Note, receiverWallet.PublicKey)
+				encryptedNotes[email] = encrypted
+			}
+		}
+
+		// Update data checkpoint
+		input.Checkpoints[i].Addresses = checkpointAddresses
+		input.Checkpoints[i].EncryptedNotes = encryptedNotes
+		input.Checkpoints[i].Note = "" // kosongkan isi plaintext
+
+		// Backward compatibility (optional)
+		if len(checkpointAddresses) > 0 {
+			input.Checkpoints[i].Address = checkpointAddresses[0]
 		}
 	}
 
@@ -91,26 +121,30 @@ func CreateTracker(input models.Tracker) (models.Tracker, error) {
 
 func GetDataTrackerFromUserLogin(c *fiber.Ctx) ([]models.Tracker, error) {
 	var trackers []models.Tracker
-
 	email_login, _ := GetLoginEmail(c)
-	// Get from mempool
-	err := mempool.Iterate(func(tx *models.Tracker) error {
-		trackers = append(trackers, *tx)
-		return nil
-	}, email_login)
-	if err != nil {
-		return nil, err
-	}
-	// Get from blockchain
-	errBlc := blockchain.Iterate(func(tx *models.Tracker) error {
-		trackers = append(trackers, *tx)
-		return nil
-	}, email_login)
-	if errBlc != nil {
-		return nil, errBlc
-	}
 
-	return trackers, nil
+	// gunakan map untuk pastikan unik per ID
+	seen := make(map[string]bool)
+
+	// ✅ ambil dari mempool
+	_ = mempool.Iterate(func(tx *models.Tracker) error {
+		if !seen[tx.ID] {
+			trackers = append(trackers, *tx)
+			seen[tx.ID] = true
+		}
+		return nil
+	}, email_login)
+
+	// ✅ ambil dari blockchain
+	_ = blockchain.Iterate(func(tx *models.Tracker) error {
+		if !seen[tx.ID] {
+			trackers = append(trackers, *tx)
+			seen[tx.ID] = true
+		}
+		return nil
+	}, email_login)
+
+	return utils.UniqueTrackers(trackers), nil
 }
 
 func GetDataTracker() ([]models.Tracker, error) {

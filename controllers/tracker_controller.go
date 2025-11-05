@@ -3,6 +3,8 @@ package controllers
 import (
 	"doc-tracker/models"
 	"doc-tracker/services"
+	"fmt"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -23,23 +25,46 @@ func CreateTracker(c *fiber.Ctx) error {
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid input"})
 	}
+
 	if input.Type == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Type is required"})
 	}
+
 	if len(input.Checkpoints) == 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "At least one checkpoint is required"})
 	}
-	if input.Checkpoints[0].Email == "" {
+
+	first := input.Checkpoints[0]
+
+	// ✅ Validasi email / emails
+	hasEmail := false
+	if len(first.Emails) > 0 {
+		for _, e := range first.Emails {
+			if strings.TrimSpace(e) != "" {
+				hasEmail = true
+				break
+			}
+		}
+	} else if strings.TrimSpace(first.Email) != "" {
+		hasEmail = true
+	}
+
+	if !hasEmail {
 		return c.Status(400).JSON(fiber.Map{"error": "Email is required for the first checkpoint"})
 	}
 
+	// ✅ Proses lanjut
 	data, err := services.CreateTracker(input)
 	if err != nil {
+		fmt.Printf("CreateTracker error: %v\n", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create tracker"})
 	}
 
-	response := fiber.Map{"status": 201, "message": "Tracker created successfully", "data": data}
-	return c.JSON(response)
+	return c.Status(201).JSON(fiber.Map{
+		"status":  201,
+		"message": "Tracker created successfully",
+		"data":    data,
+	})
 }
 
 // GetTrackers godoc

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -41,26 +42,86 @@ func SendOtp(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request")
 	}
 
-	if req.Email == "" {
-		fmt.Println("❌ Email kosong")
-		return fiber.NewError(fiber.StatusBadRequest, "Email is required")
+	identifier := req.Email // digunakan untuk dua fungsi: email atau tracker ID
+	if identifier == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Identifier (email or tracker ID) is required")
 	}
 
-	otp := fmt.Sprintf("%06d", rand.Intn(1000000))
-	fmt.Printf("📨 Sending OTP %s to %s\n", otp, req.Email)
+	loginWith := "email"
+	trackerID := ""
 
-	if err := redis.StoreOtpInMemoryOrRedis(req.Email, otp); err != nil {
+	// === Jika input adalah Tracker ID ===
+	if strings.HasPrefix(strings.ToUpper(identifier), "TRK-") {
+		trackerID = identifier
+		fmt.Println("🔎 Detected Tracker ID:", trackerID)
+
+		// Dapatkan data tracker dari database
+		tracker, err := services.GetTrackerByID(trackerID)
+		if err != nil {
+			fmt.Println("❌ Error get tracker:", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  500,
+				"message": "Failed to fetch tracker",
+			})
+		}
+		if tracker.ID == "" {
+			fmt.Println("❌ Tracker not found:", trackerID)
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"status":  404,
+				"message": "No tracker found with that ID",
+			})
+		}
+
+		// Gunakan email creator tracker untuk kirim OTP
+		if tracker.Creator == "" {
+			fmt.Println("❌ Tracker has no creator email")
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"status":  400,
+				"message": "Tracker creator email not found",
+			})
+		}
+
+		identifier = tracker.Creator
+		loginWith = "tracker"
+		fmt.Printf("📩 Tracker login: sending OTP to creator email %s (tracker %s)\n", identifier, trackerID)
+	}
+
+	// === Validasi email format sederhana ===
+	if !strings.Contains(identifier, "@") {
+		fmt.Println("❌ Invalid email format:", identifier)
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid email format")
+	}
+
+	// === Generate dan kirim OTP ===
+	otp := fmt.Sprintf("%06d", rand.Intn(1000000))
+	fmt.Printf("📨 Sending OTP %s to %s\n", otp, identifier)
+
+	// Simpan OTP ke Redis / memory
+	if err := redis.StoreOtpInMemoryOrRedis(identifier, otp); err != nil {
 		fmt.Println("❌ Failed storing OTP:", err)
 	}
 
-	// Kirim ke email (SMTP)
-	if err := utils.SendEmailOTP(req.Email, otp); err != nil {
+	// Kirim email OTP
+	if err := utils.SendEmailOTP(identifier, otp); err != nil {
 		fmt.Println("❌ Failed to send email:", err)
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to send email")
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to send OTP email")
 	}
 
 	fmt.Println("✅ OTP sent successfully")
-	return c.JSON(fiber.Map{"status": 200, "message": "OTP sent successfully"})
+
+	// === Response ke frontend ===
+	resp := fiber.Map{
+		"status":     200,
+		"login_with": loginWith,
+		"message":    fmt.Sprintf("OTP sent to %s successfully", identifier),
+	}
+
+	// Jika login dengan tracker, tambahkan tracker_id agar bisa redirect
+	if loginWith == "tracker" {
+		resp["tracker_id"] = trackerID
+	}
+
+	return c.JSON(resp)
 }
 
 func VerifyOtp(c *fiber.Ctx) error {
@@ -69,48 +130,100 @@ func VerifyOtp(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request")
 	}
 
-	expectedOtp := redis.GetOtpFromMemoryOrRedis(req.Email)
+	identifier := strings.TrimSpace(req.Email) // Bisa email atau TRK-xxxx
+	isTrackerLogin := strings.HasPrefix(strings.ToUpper(identifier), "TRK-")
+
+	var emailForOtp string
+	var trackerID string
+
+	// --- [1] Deteksi mode login ---
+	if isTrackerLogin {
+		trackerID = identifier
+
+		// Ambil data tracker untuk dapatkan email pemilik
+		tracker, err := services.GetTrackerByID(trackerID)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch tracker"})
+		}
+		if tracker.ID == "" {
+			return c.Status(404).JSON(fiber.Map{"message": "No tracker found", "data": []models.Tracker{}})
+		}
+
+		emailForOtp = tracker.Creator
+		if emailForOtp == "" {
+			return fiber.NewError(fiber.StatusNotFound, "Tracker not found or email not linked")
+		}
+	} else {
+		emailForOtp = identifier
+	}
+
+	// --- [2] Validasi OTP ---
+	expectedOtp := redis.GetOtpFromMemoryOrRedis(emailForOtp)
 	if expectedOtp == "" || req.Otp != expectedOtp {
 		return fiber.NewError(fiber.StatusUnauthorized, "Invalid OTP")
 	}
 
-	// Hapus OTP setelah digunakan
-	redis.Client.Del(redis.Ctx, "otp:"+req.Email)
+	// Hapus OTP setelah dipakai
+	redis.Client.Del(redis.Ctx, "otp:"+emailForOtp)
 	fmt.Println("✅ OTP verified successfully, removing from cache")
 
-	// Buat JWT token
-	token, expUnix, err := jwt.GenerateJWT(req.Email)
+	// --- [3] Generate JWT ---
+	var (
+		token   string
+		expUnix int64
+		err     error
+	)
+
+	if isTrackerLogin {
+		token, expUnix, err = services.GenerateJWT(emailForOtp, "tracker", trackerID)
+	} else {
+		token, expUnix, err = services.GenerateJWT(emailForOtp, "email", "")
+	}
+
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate token")
 	}
+
 	fmt.Println("✅ JWT token generated successfully")
 
-	maxAge := 0
+	// --- [4] Set cookie auth ---
+	maxAge := 86400 // default 1 hari
 	if v := os.Getenv("COOKIE_MAX_AGE"); v != "" {
 		fmt.Sscanf(v, "%d", &maxAge)
 	}
-	// Set cookie
+
 	c.Cookie(&fiber.Cookie{
 		Name:     "authToken",
 		Value:    token,
 		HTTPOnly: true,
-		Secure:   os.Getenv("COOKIE_SECURE") == "true", // ⬅️ WAJIB true jika pakai SameSite=None
+		Secure:   os.Getenv("COOKIE_SECURE") == "true",
 		Path:     os.Getenv("COOKIE_PATH"),
-		MaxAge:   maxAge,                          // ⬅️ WAJIB sesuai dengan TTL token
-		SameSite: os.Getenv("COOKIE_SAMESITE"),    // ⬅️ WAJIB "None" agar bisa cross-domain
-		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"), // ⬅️ optional tapi bisa bantu konsisten
+		MaxAge:   maxAge,
+		SameSite: os.Getenv("COOKIE_SAMESITE"),
+		Domain:   os.Getenv("COOKIE_DOMAIN_NAME"),
 	})
-	fmt.Printf("✅ Cookie set with token, expires at %d\n", expUnix)
-	fmt.Printf("Cookie details: Name=%s, Value=%s, MaxAge=%d, Secure=%t, SameSite=%s, Domain=%s\n",
-		"authToken", token, maxAge, os.Getenv("COOKIE_SECURE") == "true", os.Getenv("COOKIE_SAMESITE"), os.Getenv("COOKIE_DOMAIN_NAME"))
-	fmt.Println("✅ OTP verified successfully, token set in cookie")
 
+	fmt.Printf("✅ Cookie set (mode=%s)\n", func() string {
+		if isTrackerLogin {
+			return "tracker"
+		}
+		return "user"
+	}())
+
+	// --- [5] Response sukses ---
 	return c.JSON(fiber.Map{
-		"status":  200,
-		"message": "OTP verified successfully",
-		"token":   token,
-		"email":   req.Email,
-		"exp":     expUnix,
+		"status":     200,
+		"message":    "OTP verified successfully",
+		"token":      token,
+		"email":      emailForOtp,
+		"tracker_id": trackerID,
+		"mode": func() string {
+			if isTrackerLogin {
+				return "tracker"
+			}
+			return "user"
+		}(),
+		"exp": expUnix,
 	})
 }
 
@@ -187,7 +300,7 @@ func AuthMe(c *fiber.Ctx) error {
 	// Fallback: cari di Authorization header
 	if tokenStr == "" {
 		authHeader := c.Get("Authorization")
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		if len(authHeader) > 7 && strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr = authHeader[7:]
 		}
 	}
@@ -196,13 +309,32 @@ func AuthMe(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "Missing token")
 	}
 
+	// Verifikasi token JWT
 	claims, err := services.VerifyJwtToken(tokenStr)
 	if err != nil {
+		fmt.Println("❌ Invalid token:", err)
 		return fiber.NewError(fiber.StatusUnauthorized, "Invalid token")
 	}
 
-	return c.JSON(fiber.Map{
-		"email":   claims.Email,
-		"address": claims.Address,
-	})
+	// Deteksi mode login berdasarkan claims
+	loginWith := "email"
+	trackerID := ""
+
+	if claims.LoginWith == "tracker" && claims.TrackerID != "" {
+		loginWith = "tracker"
+		trackerID = claims.TrackerID
+	}
+
+	resp := fiber.Map{
+		"status":     200,
+		"login_with": loginWith,
+		"email":      claims.Email,
+		"address":    claims.Address,
+	}
+
+	if trackerID != "" {
+		resp["tracker_id"] = trackerID
+	}
+
+	return c.JSON(resp)
 }

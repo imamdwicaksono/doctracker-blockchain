@@ -14,14 +14,17 @@ type Tracker struct {
 }
 
 type Checkpoint struct {
-	Email         string `json:"email"`
-	Type          string `json:"type"`    // internal / external
-	Company       string `json:"company"` // only if external
-	Role          string `json:"role"`    // signer / courier
-	IsViewable    bool   `json:"is_view"` // if true, can decrypt Note
-	Note          string `json:"note"`    // original (optional)
-	EncryptedNote string `json:"encrypted_note"`
-	Address       string `json:"address"` // auto-generated
+	Emails         []string          `json:"emails,omitempty"`  // multiple recipients
+	Email          string            `json:"email,omitempty"`   // single recipient (legacy support)
+	Type           string            `json:"type"`              // internal / external
+	Company        string            `json:"company,omitempty"` // only if external
+	Role           string            `json:"role"`              // signer / courier
+	IsViewable     bool              `json:"is_view"`           // if true, can decrypt Note
+	Note           string            `json:"note,omitempty"`    // original (optional)
+	EncryptedNote  string            `json:"encrypted_note,omitempty"`
+	EncryptedNotes map[string]string `json:"encrypted_notes,omitempty"` // map[email]encrypted_note
+	Address        string            `json:"address,omitempty"`         // first address for backward compat
+	Addresses      []string          `json:"addresses,omitempty"`       // all recipient addresses
 
 	EvidenceHash string `json:"evidence_hash,omitempty"`
 	EvidencePath string `json:"evidence_path,omitempty"`

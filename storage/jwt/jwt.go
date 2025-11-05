@@ -14,20 +14,21 @@ func GetMapClaims(email string) jwt.MapClaims {
 	}
 }
 
-func GenerateJWT(email string) (string, int64, error) {
-	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := jwt.MapClaims{
-		"email": email,
-		"exp":   expirationTime.Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	return signedToken, expirationTime.Unix(), err
-}
-
 func ParseWithClaims(tokenString string, claims jwt.Claims) (*jwt.Token, error) {
 	secret := os.Getenv("JWT_SECRET")
 	return jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
+}
+
+func GenerateJWTWithClaims(claims map[string]any) (string, int64, error) {
+	secret := os.Getenv("JWT_SECRET")
+	expiration := time.Now().Add(time.Hour * 24)
+	expUnix := expiration.Unix()
+
+	claims["exp"] = expUnix
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims(claims))
+	tokenString, err := token.SignedString([]byte(secret))
+	return tokenString, expUnix, err
 }
