@@ -67,7 +67,7 @@ func ScanPeersOnPort(subnet string, port int) []string {
 
 		conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
 		if err == nil {
-			fmt.Printf("connected to %s\n", address)
+			// fmt.Printf("connected to %s\n", address)
 			peers = append(peers, address)
 			conn.Close()
 		}

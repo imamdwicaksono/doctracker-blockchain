@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"doc-tracker/blockchain"
+	"doc-tracker/blockchain/adapter"
 	"doc-tracker/grpc"
 	"doc-tracker/mempool"
 	"doc-tracker/middlewares"
 	"doc-tracker/routes"
 	"doc-tracker/services"
+	"doc-tracker/storage"
 	"doc-tracker/storage/redis"
 	"doc-tracker/utils"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,171 +24,148 @@ import (
 
 	_ "doc-tracker/docs"
 
-	"github.com/gofiber/swagger"
-	"github.com/joho/godotenv"
-
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/swagger"
+	"github.com/joho/godotenv"
 )
 
-// @title           Document Tracker API
-// @version         1.0
-// @description     REST API for internal document blockchain tracking system
-// @host            localhost:8080
-// @BasePath        /
+// ===================== MAIN =====================
 func main() {
 
-	wd, _ := os.Getwd()
-	envPath := filepath.Join(wd, ".env")
+	// ===== ENV =====
+	loadEnv()
 
-	fmt.Println("📂 Working directory:", wd)
-	fmt.Println("🔍 Loading .env from:", envPath)
-
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		fmt.Println("❌ .env file does not exist at path:", envPath)
-	} else {
-		if err := godotenv.Overload(envPath); err != nil {
-			fmt.Println("❌ Failed to load .env:", err)
-		} else {
-			fmt.Println("✅ .env loaded from:", envPath)
-		}
-	}
-
-	// Try load .env for local dev, ignore in production
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println("No .env file found, assuming Railway env")
-	} else {
-		fmt.Println("✅ .env file loaded successfully")
-	}
-
-	fmt.Println("✅ Checking and creating ECDSA keys if not exist...")
+	// ===== CRYPTO KEYS =====
+	fmt.Println("✅ Checking and creating ECDSA keys...")
 	utils.CreatePemIfNotExists("data/private.pem")
 	utils.CreatePemIfNotExists("data/public.pem")
 
-	fmt.Println("[Init] Starting Doc-Tracker Node...")
-
+	// ===== REDIS =====
 	redis.InitRedis()
-	fmt.Println("[Redis] Redis initialized")
+	fmt.Println("[Redis] Initialized")
 
+	// ===== DATABASE =====
+	storage.InitDB()
+	fmt.Println("[DB] Connected")
+
+	// ===== BLOCKCHAIN CORE (LEGACY) =====
 	blockchain.InitChain()
-	fmt.Println("[Blockchain] Chain loaded")
+	mempoolInit()
 
-	// Inisialisasi kunci
-	if _, err := mempool.InitKeys(); err != nil {
-		fmt.Printf("Failed to initialize keys: %v", err)
-	}
-	// Inisialisasi mempool
-	if err := mempool.InitEncryptMempool(); err != nil {
-		fmt.Printf("Warning: %v", err)
-	}
-	// Load data dari file
-	if err := mempool.LoadFromFile(); err != nil {
-		fmt.Printf("Failed to load mempool: %v", err)
-	}
-	fmt.Println("[Mempool] Mempool loaded")
+	// ===== BLOCKCHAIN LISTENER (EVM) =====
+	startBlockchainListener()
 
-	// for _, tracker := range mempool.GetAll() {
-	// 	fmt.Printf(" - Tracker ID: %s | Type: %s | Status: %s | Checkpoints: %d\n", tracker.ID, tracker.Type, tracker.Status, len(tracker.Checkpoints))
-	// }
-
-	// for _, block := range blockchain.Blockchain {
-	// 	fmt.Printf(" - Block #%d | Hash: %s | Encrypted: %t | Transactions: %d\n", block.Index, block.Hash, block.Encrypted, len(block.Transactions))
-	// }
-
-	mempool.RemoveDuplicateEntries()
-	fmt.Println("[Mempool] Duplicate entries removed")
-	blockchain.RemoveDuplicateBlocks()
-	fmt.Println("[Blockchain] Duplicate blocks removed")
-
+	// ===== WORKERS =====
 	services.StartMinerWorker()
-	fmt.Println("[Miner] Worker started")
-
 	services.StartSyncWorker()
-	fmt.Println("[Sync] Worker started")
+	fmt.Println("[Workers] Miner & Sync started")
 
-	// ctx := context.Background()
-	// storage.S3 = storage.InitializeS3Storage(ctx)
-	// fmt.Println("[S3] Storage initialized")
-
+	// ===== GRPC =====
 	killProcessOnPort(3003)
 	go grpc.StartGRPCServer("3003")
-	fmt.Println("[GRPC] Server started on port 3003")
+	fmt.Println("[GRPC] Server started on :3003")
+
+	// ===== HTTP API =====
+	startHTTPServer()
+}
+
+// ===================== BLOCKCHAIN LISTENER =====================
+func startBlockchainListener() {
+
+	client, err := adapter.NewClient()
+	if err != nil {
+		log.Fatal("[Blockchain] client error:", err)
+	}
+
+	contractAddr := common.HexToAddress(
+		os.Getenv("AUDIT_CONTRACT_ADDRESS"),
+	)
+
+	auditContract, err := adapter.NewDocumentAudit(
+		contractAddr,
+		client.Eth,
+	)
+	if err != nil {
+		log.Fatal("[Blockchain] contract bind error:", err)
+	}
+
+	listener := &adapter.Listener{
+		Client:   client,
+		Contract: auditContract,
+		Address:  contractAddr,
+	}
+
+	ctx := context.Background()
+
+	// 1️⃣ catch-up dari last processed block
+	if err := listener.SyncFromLastBlock(ctx, storage.DB); err != nil {
+		log.Fatal("[Blockchain] sync failed:", err)
+	}
+
+	// 2️⃣ realtime listener
+	go func() {
+		listener.StartPolling(ctx, storage.DB)
+	}()
+
+	fmt.Println("[Blockchain] Event listener started (resume-safe)")
+}
+
+// ===================== MEMPOOL INIT =====================
+func mempoolInit() {
+
+	if _, err := mempool.InitKeys(); err != nil {
+		fmt.Printf("Failed init keys: %v\n", err)
+	}
+
+	if err := mempool.InitEncryptMempool(); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	}
+
+	if err := mempool.LoadFromFile(); err != nil {
+		fmt.Printf("Failed load mempool: %v\n", err)
+	}
+
+	mempool.RemoveDuplicateEntries()
+	blockchain.RemoveDuplicateBlocks()
+
+	fmt.Println("[Mempool] Loaded & cleaned")
+}
+
+// ===================== HTTP SERVER =====================
+func startHTTPServer() {
 
 	app := fiber.New()
 
-	// allowedOrigins := ""
-	// if os.Getenv("ENV") == "development" {
-	// 	allowedOrigins = "http://172.24.4.25:3000,http://localhost:3000"
-	// } else {
-	// 	allowedOrigins = "https://production.com"
-	// }
-
 	if os.Getenv("ALLOWED_ORIGIN") != "" {
 		app.Use(cors.New(cors.Config{
-			AllowOrigins:     os.Getenv("ALLOWED_ORIGIN"), // Set allowed origins from env
+			AllowOrigins:     os.Getenv("ALLOWED_ORIGIN"),
 			AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
-			AllowHeaders:     "Origin, Content-Type, Accept, Authorization", // ⚠️ jangan tambahkan `credentials`
-			ExposeHeaders:    "Content-Length",
+			AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 			AllowCredentials: true,
 			MaxAge:           12 * 3600,
 		}))
 	}
 
+	app.Use(limiter.New(limiter.Config{Max: 100, Expiration: time.Minute}))
+
 	app.Use(func(c *fiber.Ctx) error {
-		fmt.Printf("👉 [%s] %s from %s\n", c.Method(), c.Path(), c.Get("Origin"))
+		fmt.Printf("👉 [%s] %s\n", c.Method(), c.Path())
 		return c.Next()
 	})
 
-	app.Use(limiter.New(limiter.Config{Max: 100, Expiration: time.Minute}))
-
+	// ROUTES
 	routes.P2PRoutes(app)
 	routes.SyncRoutes(app)
 	routes.MinerRoutes(app)
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	// api
-	HandlerApiRoute(app)
+	api := app.Group("/api")
+	routes.SetupAuthRoutes(api)
 
-	HandlerWebRoute(app)
-	//api protected
-	HandlerApiProtectedRoute(app)
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3002"
-	}
-	// Start the Fiber app
-	portInt, err := strconv.Atoi(port)
-	if err != nil {
-		fmt.Println("Invalid port:", port)
-		return
-	}
-	killProcessOnPort(portInt)
-
-	fmt.Println("[Server] Listening on :", port)
-	err = app.Listen(":" + port)
-	if err != nil {
-		fmt.Println("Server error:", err)
-
-		return
-	}
-
-	app.Use(func(c *fiber.Ctx) error {
-		fmt.Println("Request Origin:", c.Get("Origin"))
-		return c.Next()
-	})
-}
-
-func HandlerWebRoute(app *fiber.App) {
-	protectedWeb := app.Group("", middlewares.JWTMiddleware)
-	routes.RegisterEvidenceRoutesWeb(protectedWeb)
-}
-
-func HandlerApiProtectedRoute(app *fiber.App) {
-	// api protected
 	protected := app.Group("/api", middlewares.JWTMiddleware)
 	routes.TrackerRoutes(protected)
 	routes.SetupAuthProtectedRoutes(protected)
@@ -193,57 +174,49 @@ func HandlerApiProtectedRoute(app *fiber.App) {
 	routes.RegisterCheckpointRoutes(protected)
 	routes.BlockRoutes(protected)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3002"
+	}
+
+	portInt, _ := strconv.Atoi(port)
+	killProcessOnPort(portInt)
+
+	fmt.Println("[HTTP] Listening on :", port)
+	log.Fatal(app.Listen(":" + port))
 }
 
-func HandlerApiRoute(app *fiber.App) {
-	api := app.Group("/api")
-	routes.SetupAuthRoutes(api)
+// ===================== ENV =====================
+func loadEnv() {
+
+	wd, _ := os.Getwd()
+	envPath := filepath.Join(wd, ".env")
+
+	if _, err := os.Stat(envPath); err == nil {
+		_ = godotenv.Overload(envPath)
+		fmt.Println("✅ .env loaded")
+	}
 }
 
+// ===================== KILL PORT =====================
 func killProcessOnPort(port int) error {
+
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
-	case "windows":
-		// Find PID using netstat and kill with taskkill
-		findCmd := exec.Command("netstat", "-ano")
-		findOut, err := findCmd.Output()
-		if err != nil {
-			return fmt.Errorf("failed to find process: %v", err)
-		}
-
-		lines := strings.Split(string(findOut), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, fmt.Sprintf(":%d", port)) {
-				parts := strings.Fields(line)
-				if len(parts) > 4 {
-					pid := parts[len(parts)-1]
-					cmd = exec.Command("taskkill", "/F", "/PID", pid)
-					break
-				}
-			}
-		}
-	case "darwin", "linux", "freebsd", "openbsd":
-		// Find PID using lsof and kill with kill
+	case "darwin", "linux":
 		findCmd := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-t")
-		findOut, err := findCmd.Output()
-		if err != nil {
-			return fmt.Errorf("failed to find process: %v", err)
-		}
-
-		pid := strings.TrimSpace(string(findOut))
+		out, _ := findCmd.Output()
+		pid := strings.TrimSpace(string(out))
 		if pid != "" {
 			cmd = exec.Command("kill", "-9", pid)
 		}
 	default:
-		return fmt.Errorf("unsupported platform")
+		return nil
 	}
 
-	if cmd == nil {
-		return fmt.Errorf("no process found on port %d", port)
+	if cmd != nil {
+		return cmd.Run()
 	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return nil
 }
