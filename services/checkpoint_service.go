@@ -30,7 +30,7 @@ func UpdateCheckpointStatus(trackerID string, checkpointAddr string, evidenceHas
 			tracker.Checkpoints[i].CompletedAt = time.Now().Unix()
 			tracker.Checkpoints[i].Note = cp.Note
 
-			publicKeyStr, err := utils.LoadKeys()
+			publicKeyStr, err := utils.LoadKeysFromEnv()
 			if err != nil {
 				// fmt.Printf("failed to get public key: %v\n", err)
 				continue
@@ -84,7 +84,7 @@ func UpdateCheckpointStatus(trackerID string, checkpointAddr string, evidenceHas
 	}
 
 	// Update in storage
-	mempool.SaveToFile()
+	// mempool.SaveToFile()
 
 	// Jika complete, broadcast ke miner
 	if allComplete {

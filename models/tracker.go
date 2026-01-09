@@ -1,16 +1,22 @@
 package models
 
+import "time"
+
 type Tracker struct {
-	ID             string            `json:"id"`
-	Type           string            `json:"type"`
-	Privacy        string            `json:"privacy"`
-	Creator        string            `json:"creator"`
-	CreatorAddr    string            `json:"creator_address"`
-	CreatedAt      int64             `json:"created_at"`
-	Checkpoints    []Checkpoint      `json:"checkpoints"`
-	TargetEnd      string            `json:"target_end"` // self / email / address
-	Status         string            `json:"status"`     // pending, progress, complete
-	EncryptedNotes map[string]string `json:"encrypted_notes,omitempty"`
+	ID          string `gorm:"primaryKey;size:64" json:"id"`
+	Type        string `gorm:"size:50" json:"type"`
+	Privacy     string `gorm:"size:20" json:"privacy"`
+	Creator     string `gorm:"size:255" json:"creator"`
+	CreatorAddr string `gorm:"size:255" json:"creator_address"`
+
+	CreatedAt int64  `json:"created_at"`
+	TargetEnd string `gorm:"size:100" json:"target_end"`
+	Status    string `gorm:"size:20" json:"status"`
+
+	Checkpoints    []Checkpoint      `gorm:"type:jsonb" json:"checkpoints"`
+	EncryptedNotes map[string]string `gorm:"type:jsonb" json:"encrypted_notes"`
+
+	UpdatedAt time.Time `json:"-"`
 }
 
 type Checkpoint struct {

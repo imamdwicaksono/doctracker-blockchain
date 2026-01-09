@@ -1,36 +1,40 @@
 package controllers
 
 import (
-	"doc-tracker/blockchain"
+	"doc-tracker/models"
+	"doc-tracker/storage"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-// POST /api/sync/block
-func ReceiveBlock(c *fiber.Ctx) error {
-	var block blockchain.Block
+// GET /api/blocks
+// List semua block audit (DB-first)
+func GetBlocks(c *fiber.Ctx) error {
+	var blocks []models.Block
 
-	if err := c.BodyParser(&block); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid block data",
-		})
+	if err := storage.DB.
+		Order("height asc").
+		Find(&blocks).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).
+			JSON(fiber.Map{"error": err.Error()})
 	}
 
-	lastBlock := blockchain.GetLastBlock()
-
-	if !blockchain.IsBlockValid(block, lastBlock) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid block structure or hash",
-		})
-	}
-
-	blockchain.AddBlock(block)
-
-	return c.JSON(fiber.Map{
-		"status": "Block accepted and added to chain",
-	})
+	return c.JSON(blocks)
 }
 
-func GetChain(c *fiber.Ctx) error {
-	return c.JSON(blockchain.GetAllBlocks())
+// GET /api/blocks/:height
+// Ambil block berdasarkan height
+func GetBlockByHeight(c *fiber.Ctx) error {
+	height := c.Params("height")
+
+	var block models.Block
+	if err := storage.DB.
+		Where("height = ?", height).
+		First(&block).Error; err != nil {
+
+		return c.Status(fiber.StatusNotFound).
+			JSON(fiber.Map{"error": "block not found"})
+	}
+
+	return c.JSON(block)
 }

@@ -11,7 +11,6 @@ import (
 	"doc-tracker/services"
 	"doc-tracker/storage"
 	"doc-tracker/storage/redis"
-	"doc-tracker/utils"
 	"fmt"
 	"log"
 	"os"
@@ -30,6 +29,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/swagger"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm"
 )
 
 // ===================== MAIN =====================
@@ -37,11 +37,6 @@ func main() {
 
 	// ===== ENV =====
 	loadEnv()
-
-	// ===== CRYPTO KEYS =====
-	fmt.Println("✅ Checking and creating ECDSA keys...")
-	utils.CreatePemIfNotExists("data/private.pem")
-	utils.CreatePemIfNotExists("data/public.pem")
 
 	// ===== REDIS =====
 	redis.InitRedis()
@@ -52,8 +47,8 @@ func main() {
 	fmt.Println("[DB] Connected")
 
 	// ===== BLOCKCHAIN CORE (LEGACY) =====
-	blockchain.InitChain()
-	mempoolInit()
+	blockchain.InitChainFromDB(storage.DB)
+	mempoolInit(storage.DB)
 
 	// ===== BLOCKCHAIN LISTENER (EVM) =====
 	startBlockchainListener()
@@ -114,24 +109,18 @@ func startBlockchainListener() {
 }
 
 // ===================== MEMPOOL INIT =====================
-func mempoolInit() {
+func mempoolInit(db *gorm.DB) {
 
+	fmt.Println("🔐 Loading crypto keys from ENV...")
 	if _, err := mempool.InitKeys(); err != nil {
-		fmt.Printf("Failed init keys: %v\n", err)
+		log.Fatal("crypto key error:", err)
 	}
 
-	if err := mempool.InitEncryptMempool(); err != nil {
-		fmt.Printf("Warning: %v\n", err)
+	if err := mempool.InitFromDB(db); err != nil {
+		log.Fatal("[Mempool] DB load failed:", err)
 	}
 
-	if err := mempool.LoadFromFile(); err != nil {
-		fmt.Printf("Failed load mempool: %v\n", err)
-	}
-
-	mempool.RemoveDuplicateEntries()
-	blockchain.RemoveDuplicateBlocks()
-
-	fmt.Println("[Mempool] Loaded & cleaned")
+	fmt.Println("[Mempool] Loaded from database")
 }
 
 // ===================== HTTP SERVER =====================
@@ -180,7 +169,9 @@ func startHTTPServer() {
 	}
 
 	portInt, _ := strconv.Atoi(port)
-	killProcessOnPort(portInt)
+	if os.Getenv("ENV") == "dev" {
+		killProcessOnPort(portInt)
+	}
 
 	fmt.Println("[HTTP] Listening on :", port)
 	log.Fatal(app.Listen(":" + port))

@@ -2,39 +2,66 @@ package p2p
 
 import (
 	"context"
-	"fmt"
+	"time"
+
+	pb "doc-tracker/proto"
 
 	"google.golang.org/grpc"
-
-	pb "doc-tracker/proto" // ganti sesuai path
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-func BroadcastToPeer(peerAddr string, entry *pb.Block) error {
-	conn, err := grpc.Dial(peerAddr, grpc.WithInsecure()) // gunakan TLS untuk prod
+func SyncTrackerToPeer(peerAddr string, tracker *pb.Tracker) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.Dial(
+		peerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
 	client := pb.NewP2PServiceClient(conn)
-	_, err = client.BroadcastBlock(context.Background(), entry)
+	_, err = client.SyncTracker(ctx, tracker)
 	return err
 }
 
-func FetchBlockGRPC(peer string) (*pb.BlockList, error) {
-	conn, err := grpc.Dial(peer, grpc.WithInsecure())
+func SyncMempoolToPeer(peerAddr string, trackers []*pb.Tracker) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, err := grpc.Dial(
+		peerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
-		fmt.Println("Failed to connect to peer:", peer)
-		return nil, err
+		return err
 	}
 	defer conn.Close()
 
 	client := pb.NewP2PServiceClient(conn)
-	res, err := client.GetBlockchain(context.Background(), &pb.Empty{})
-	if err != nil {
-		fmt.Println("Error fetching blockchain:", err)
-		return nil, err
-	}
+	_, err = client.SyncMempool(ctx, &pb.TrackerList{
+		Trackers: trackers,
+	})
+	return err
+}
 
-	return res, nil
+func PingPeer(peerAddr string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	conn, err := grpc.Dial(
+		peerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	client := pb.NewP2PServiceClient(conn)
+	_, err = client.Ping(ctx, &pb.Empty{})
+	return err
 }

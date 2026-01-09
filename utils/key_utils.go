@@ -2,38 +2,53 @@ package utils
 
 import (
 	"crypto/elliptic"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"os"
 )
 
-var (
-	pubKeyPath  = "data/public.key"
-	privKeyPath = "data/private.key"
-)
+func LoadKeysFromEnv() (*ECDHKeyPair, error) {
+	privHex := os.Getenv("ECDH_PRIVATE_KEY")
+	pubHex := os.Getenv("ECDH_PUBLIC_KEY")
 
-// loadKeys memuat kunci dari file
-func LoadKeys() (*ECDHKeyPair, error) {
-	// Load private key
-	privKeyBytes, err := os.ReadFile(privKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read private key: %v", err)
+	if privHex == "" || pubHex == "" {
+		return nil, fmt.Errorf("ECDH_PRIVATE_KEY or ECDH_PUBLIC_KEY not set")
 	}
 
-	// Load public key
-	pubKeyBytes, err := os.ReadFile(pubKeyPath)
+	privBytes, err := HexToBytes(privHex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read public key: %v", err)
+		return nil, err
+	}
+
+	pubBytes, err := HexToBytes(pubHex)
+	if err != nil {
+		return nil, err
 	}
 
 	curve := elliptic.P256()
-	pubKey, err := DeserializePublicKey(pubKeyBytes, curve)
+
+	d := new(big.Int).SetBytes(privBytes)
+	d.Mod(d, curve.Params().N)
+
+	pubKey, err := DeserializePublicKey(pubBytes, curve)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse public key: %v", err)
+		return nil, fmt.Errorf("invalid public key: %w", err)
+	}
+
+	if !curve.IsOnCurve(pubKey.X, pubKey.Y) {
+		return nil, fmt.Errorf("public key not on curve")
 	}
 
 	return &ECDHKeyPair{
-		PrivateKey: new(big.Int).SetBytes(privKeyBytes),
+		PrivateKey: d,
 		PublicKey:  pubKey,
 	}, nil
+}
+
+func HexToBytes(hexStr string) ([]byte, error) {
+	if len(hexStr)%2 != 0 {
+		return nil, fmt.Errorf("invalid hex string length")
+	}
+	return hex.DecodeString(hexStr)
 }

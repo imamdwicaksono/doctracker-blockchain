@@ -1,38 +1,58 @@
 package controllers
 
 import (
-	"doc-tracker/blockchain"
 	"doc-tracker/mempool"
 	"doc-tracker/models"
-	"doc-tracker/p2p"
+	"doc-tracker/storage"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm/clause"
 )
 
-// Dipanggil saat menerima broadcast dari peer
-func SyncBlock(c *fiber.Ctx) error {
-	var block models.Block
-	if err := c.BodyParser(&block); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid block"})
+// POST /api/sync/tracker
+func SyncTracker(c *fiber.Ctx) error {
+	var tracker models.Tracker
+
+	if err := c.BodyParser(&tracker); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid tracker"})
 	}
-	blockchain.AddBlockToChain(block)
-	return c.JSON(fiber.Map{"status": "block added"})
+
+	// Simpan ke DB (idempotent)
+	if err := storage.DB.
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).
+		Create(&tracker).Error; err != nil {
+
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Masukkan ke mempool cache
+	mempool.AddIfNotExists(tracker)
+
+	return c.JSON(fiber.Map{"status": "tracker synced"})
 }
 
-// Dipanggil manual (misal tombol di UI) untuk fetch dari peer
-func ManualSync(c *fiber.Ctx) error {
-	peer := c.Query("peer")
-	if peer == "" {
-		return c.Status(400).SendString("peer is required")
+// POST /api/sync/mempool
+func SyncMempool(c *fiber.Ctx) error {
+	var trackers []models.Tracker
+
+	if err := c.BodyParser(&trackers); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid mempool payload"})
 	}
 
-	block := p2p.FetchLatestBlockFrom(peer)
-	blockchain.TryAddBlock(block)
+	for _, t := range trackers {
+		// DB first
+		_ = storage.DB.
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoNothing: true,
+			}).
+			Create(&t).Error
 
-	entries := p2p.FetchMempoolFrom(peer)
-	for _, tx := range entries {
-		mempool.AddIfNotExists(tx)
+		mempool.AddIfNotExists(t)
 	}
 
-	return c.SendString("Sync completed from " + peer)
+	return c.JSON(fiber.Map{"status": "mempool synced"})
 }

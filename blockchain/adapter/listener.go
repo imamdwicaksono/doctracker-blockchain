@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"math/big"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"gorm.io/gorm"
 )
 
 type Listener struct {
@@ -18,7 +18,7 @@ type Listener struct {
 	Address  common.Address
 }
 
-func (l *Listener) StartPolling(ctx context.Context, db *sql.DB) {
+func (l *Listener) StartPolling(ctx context.Context, db *gorm.DB) {
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -37,7 +37,7 @@ func (l *Listener) StartPolling(ctx context.Context, db *sql.DB) {
 	}
 }
 
-func (l *Listener) pollOnce(ctx context.Context, db *sql.DB) {
+func (l *Listener) pollOnce(ctx context.Context, db *gorm.DB) {
 
 	lastBlock := LoadLastBlock(db)
 
@@ -70,6 +70,6 @@ func (l *Listener) pollOnce(ctx context.Context, db *sql.DB) {
 	}
 }
 
-func (l *Listener) handleLog(db *sql.DB, vLog types.Log) {
+func (l *Listener) handleLog(db *gorm.DB, vLog types.Log) {
 	log.Printf("🔔 New event log: %+v\n", vLog)
 }

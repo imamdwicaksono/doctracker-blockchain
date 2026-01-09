@@ -2,30 +2,54 @@ package services
 
 import (
 	"doc-tracker/blockchain"
-	"doc-tracker/mempool"
 	"doc-tracker/models"
-	"doc-tracker/p2p"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-func MinePendingTrackers() models.Block {
-	pending := mempool.GetAll()
-	if len(pending) == 0 {
-		return models.Block{}
-	}
+func MinePendingTrackers(db *gorm.DB) (*models.Block, error) {
 
-	// Convert []*models.Tracker to []models.Tracker
-	var trackers []models.Tracker
-	for _, t := range pending {
-		trackers = append(trackers, *t)
-	}
-	block, _ := blockchain.MineNewBlock(trackers)
-	if blockchain.CheckDuplicateBlock(block) {
-		return models.Block{} // Block sudah ada, tidak perlu dibuat lagi
-	}
-	mempool.Clear()
+	var block *models.Block
 
-	// TODO: Kirim ke peer (sync P2P)
-	p2p.BroadcastNewBlock(block)
+	err := db.Transaction(func(tx *gorm.DB) error {
 
-	return block
+		// 1️⃣ Lock tracker rows
+		var trackers []models.Tracker
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("status = ?", "progress").
+			Limit(50).
+			Find(&trackers).Error; err != nil {
+			return err
+		}
+
+		if len(trackers) == 0 {
+			return nil // nothing to mine
+		}
+
+		// 2️⃣ Update tracker status
+		ids := make([]string, 0, len(trackers))
+		for _, t := range trackers {
+			ids = append(ids, t.ID)
+		}
+
+		if err := tx.
+			Model(&models.Tracker{}).
+			Where("id IN ?", ids).
+			Update("status", "complete").Error; err != nil {
+			return err
+		}
+
+		// 3️⃣ Create audit block
+		b, err := blockchain.CreateBlock(tx, trackers)
+		if err != nil {
+			return err
+		}
+
+		block = b
+		return nil
+	})
+
+	return block, err
 }

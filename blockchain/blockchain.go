@@ -1,374 +1,157 @@
 package blockchain
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
-	"doc-tracker/mempool"
-	"doc-tracker/models"
-	"doc-tracker/utils"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
-	"log"
-	"os"
-	"strconv"
-	"sync"
 	"time"
+
+	"doc-tracker/models"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-var (
-	Blockchain  []models.Block
-	chainMutex  sync.RWMutex
-	chainFile   = "data/chain.bin"  // File terenkripsi
-	pubKeyPath  = "data/public.pem" // Sama dengan mempool
-	privKeyPath = "data/private.pem"
-)
+func InitChainFromDB(db *gorm.DB) {
+	var count int64
+	db.Model(&models.Block{}).Count(&count)
 
-// InitChain inisialisasi blockchain dengan genesis block terenkripsi
-func InitChain() {
-	chainMutex.Lock()
-	defer chainMutex.Unlock()
-
-	// Coba load dari storage dulu
-	if loaded := loadChainFromStorage(); loaded {
-		fmt.Printf("✅ Loaded blockchain with %d blocks\n", len(Blockchain))
-		// for _, block := range Blockchain {
-		// 	// fmt.Printf("Block #%d | Hash: %s | Encrypted: %t | Transactions: %d\n", block.Index, block.Hash, block.Encrypted, len(block.Transactions))
-		// 	// fmt.Printf("Timestamp: %s\n", time.Unix(block.Timestamp, 0).Format(time.RFC3339))
-		// 	// fmt.Printf("Previous Hash: %s\n", block.PrevHash)
-		// 	// fmt.Println("Transactions:")
-		// 	for _, tx := range block.Transactions {
-		// 		fmt.Printf("  - ID: %s | Type: %s | Status: %s\n", tx.ID, tx.Type, tx.Status)
-		// 	}
-		// 	// Tambahkan garis pemisah antar block
-		// 	fmt.Println("--------------------------------------------------")
-		// }
-
-		return
-	}
-
-	// Buat genesis block jika tidak ada
-	if len(Blockchain) > 0 {
-		log.Println("⚠️ Blockchain already initialized, skipping genesis block creation")
-		return
-	}
-	genesis := CreateGenesisBlock()
-	Blockchain = append(Blockchain, genesis)
-
-	// Enkripsi dan simpan
-	if err := saveEncryptedBlock(genesis); err != nil {
-		log.Printf("⚠️ Failed to save genesis block: %v", err)
-	}
-
-}
-
-// CreateGenesisBlock membuat block awal terenkripsi
-func CreateGenesisBlock() models.Block {
-	genesis := models.Block{
-		Index:        0,
-		Timestamp:    time.Now().Unix(),
-		PrevHash:     "0",
-		Transactions: []models.Tracker{},
-		Nonce:        0,
-		Encrypted:    true,
-	}
-	genesis.Hash = CalculateHash(genesis)
-	return genesis
-}
-
-func CheckDuplicateBlock(newBlock models.Block) bool {
-	chainMutex.RLock()
-	defer chainMutex.RUnlock()
-
-	for _, block := range Blockchain {
-		if block.Hash == newBlock.Hash {
-			return true // Block sudah ada
+	if count == 0 {
+		genesis := models.Block{
+			Height:    0,
+			BlockHash: hashSHA256("GENESIS"),
+			PrevHash:  "",
+			TxCount:   0,
+			CreatedAt: time.Now().Unix(),
 		}
+		db.Create(&genesis)
 	}
-	return false // Block belum ada
 }
 
-func IsTrackerInBlockchain(trackerID string) bool {
-	chainMutex.RLock()
-	defer chainMutex.RUnlock()
-
-	for _, block := range Blockchain {
-		for _, tx := range block.Transactions {
-			if tx.ID == trackerID {
-				return true // Tracker sudah ada di blockchain
-			}
-		}
-	}
-	return false // Tracker belum ada di blockchain
-}
-
-// MineNewBlock membuat block baru terenkripsi
-func MineNewBlock(transactions []models.Tracker) (models.Block, error) {
-	prev := GetLastBlock()
-
-	newBlock := models.Block{
-		Index:        prev.Index + 1,
-		Timestamp:    time.Now().Unix(),
-		PrevHash:     prev.Hash,
-		Transactions: transactions,
-		Encrypted:    true,
-	}
-
-	// Mining process
-	MineBlock(&newBlock, 4)
-
-	// Enkripsi dan simpan block
-	if err := saveEncryptedBlock(newBlock); err != nil {
-		return models.Block{}, fmt.Errorf("failed to save block: %v", err)
-	}
-
-	chainMutex.Lock()
-	Blockchain = append(Blockchain, newBlock)
-	chainMutex.Unlock()
-
-	for _, tx := range transactions {
-		// Hapus tracker dari mempool
-		mempool.RemoveFromMempool(tx.ID)
-	}
-
-	return newBlock, nil
-}
-
-// ================ ENCRYPTION FUNCTIONS ================
-
-// saveEncryptedBlock menyimpan block terenkripsi
-func saveEncryptedBlock(block models.Block) error {
-	// 1. Serialisasi block
-	data, err := json.Marshal(block)
-	if err != nil {
-		return fmt.Errorf("marshal failed: %v", err)
-	}
-
-	// 2. Load public key
-	pubKey, err := utils.LoadECDSAPublicKey(pubKeyPath)
-	if err != nil {
-		return fmt.Errorf("load public key failed: %v", err)
-	}
-
-	// 3. Enkripsi dengan ECIES
-	eciesPub := utils.ImportECDSAPublic(pubKey)
-	encryptedData, err := utils.ECIESEncrypt(rand.Reader, eciesPub, data, nil, nil)
-	if err != nil {
-		return fmt.Errorf("encryption failed: %v", err)
-	}
-
-	// 4. Simpan ke file terpisah per block
-	if err := os.MkdirAll("data/blocks", 0755); err != nil {
-		return fmt.Errorf("failed to create blocks directory: %v", err)
-	}
-	// Gunakan index sebagai nama file
-	blockFile := fmt.Sprintf("data/blocks/%d.bin", block.Index)
-	if err := os.WriteFile(blockFile, encryptedData, 0600); err != nil {
-		return fmt.Errorf("write failed: %v", err)
-	}
-
-	// 5. Update chain index
-	return updateChainIndex(block.Index, block.Hash)
-}
-
-// loadDecryptedBlock memuat dan mendekripsi block
-func loadDecryptedBlock(index int) (models.Block, error) {
-	blockFile := fmt.Sprintf("data/blocks/%d.bin", index)
-	encryptedData, err := os.ReadFile(blockFile)
-	if err != nil {
-		return models.Block{}, fmt.Errorf("read failed: %v", err)
-	}
-
-	// Load private key
-	privKey, err := utils.LoadECDSAPrivateKey(privKeyPath)
-	if err != nil {
-		return models.Block{}, fmt.Errorf("load private key failed: %v", err)
-	}
-
-	// Dekripsi
-	plaintext, err := utils.ECIESDecrypt(utils.ImportECDSA(privKey), encryptedData, nil, nil)
-	if err != nil {
-		return models.Block{}, fmt.Errorf("decryption failed: %v", err)
-	}
+func CreateBlock(
+	db *gorm.DB,
+	trackers []models.Tracker,
+) (*models.Block, error) {
 
 	var block models.Block
-	if err := json.Unmarshal(plaintext, &block); err != nil {
-		return models.Block{}, fmt.Errorf("unmarshal failed: %v", err)
-	}
 
-	return block, nil
-}
+	err := db.Transaction(func(tx *gorm.DB) error {
 
-// updateChainIndex memperbarui index chain terenkripsi
-func updateChainIndex(index int, hash string) error {
-	chainData := fmt.Sprintf("%d:%s", index, hash)
-
-	// Enkripsi data index
-	pubKey, err := utils.LoadECDSAPublicKey(pubKeyPath)
-	if err != nil {
-		return err
-	}
-
-	eciesPub := utils.ImportECDSAPublic(pubKey)
-	encryptedData, err := utils.ECIESEncrypt(rand.Reader, eciesPub, []byte(chainData), nil, nil)
-	if err != nil {
-		return err
-	}
-
-	// Tulis ke file chain index
-	return os.WriteFile(chainFile, encryptedData, 0600)
-}
-
-// loadChainFromStorage memuat seluruh chain dari storage
-func loadChainFromStorage() bool {
-	if _, err := os.Stat(chainFile); os.IsNotExist(err) {
-		return false
-	}
-
-	// Dekripsi chain index
-	encryptedData, err := os.ReadFile(chainFile)
-	if err != nil {
-		log.Printf("⚠️ Failed to read chain file: %v", err)
-		return false
-	}
-
-	privKey, err := utils.LoadECDSAPrivateKey(privKeyPath)
-	if err != nil {
-		log.Printf("⚠️ Failed to load private key: %v", err)
-		return false
-	}
-
-	plaintext, err := utils.ECIESDecrypt(utils.ImportECDSA(privKey), encryptedData, nil, nil)
-	if err != nil {
-		log.Printf("⚠️ Failed to decrypt chain index: %v", err)
-		return false
-	}
-
-	// Parse index terakhir
-	plaintextStr, _ := utils.ConvertForAtoi(string(plaintext))
-	if plaintextStr == "" {
-		log.Println("⚠️ Invalid chain index format")
-		return false
-	}
-	lastIndex, err := strconv.Atoi(plaintextStr)
-	if err != nil {
-		log.Printf("⚠️ Invalid chain index: %v", err)
-		return false
-	}
-
-	// Load semua block
-	var chain []models.Block
-	for i := 0; i <= lastIndex; i++ {
-		block, err := loadDecryptedBlock(i)
-		if err != nil {
-			log.Printf("⚠️ Failed to load block %d: %v", i, err)
-			return false
+		var last models.Block
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Order("height desc").
+			Limit(1).
+			Take(&last).Error; err != nil {
+			return err
 		}
-		chain = append(chain, block)
+
+		createdAt := time.Now().Unix()
+		height := last.Height + 1
+
+		hash := calculateBlockHash(
+			last.BlockHash,
+			height,
+			len(trackers),
+			createdAt,
+		)
+
+		block = models.Block{
+			Height:    height,
+			BlockHash: hash,
+			PrevHash:  last.BlockHash,
+			TxCount:   len(trackers),
+			CreatedAt: createdAt,
+		}
+
+		return tx.Create(&block).Error
+	})
+
+	return &block, err
+}
+
+func calculateBlockHash(
+	prevHash string,
+	height int,
+	txCount int,
+	createdAt int64,
+) string {
+
+	data := fmt.Sprintf(
+		"%s|%d|%d|%d",
+		prevHash,
+		height,
+		txCount,
+		createdAt,
+	)
+
+	sum := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(sum[:])
+}
+
+func SaveAudit(
+	db *gorm.DB,
+	block models.Block,
+	evmTxHash string,
+) error {
+
+	return db.Create(&models.BlockchainAudit{
+		BlockHeight: block.Height,
+		BlockHash:   block.BlockHash,
+		EvmTxHash:   evmTxHash,
+	}).Error
+}
+
+func hashSHA256(input string) string {
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:])
+}
+
+func GetLatestBlock(db *gorm.DB) (models.Block, error) {
+	var block models.Block
+
+	err := db.
+		Order("height desc").
+		Limit(1).
+		Take(&block).Error
+
+	return block, err
+}
+
+func GetLastBlock(db *gorm.DB) (models.Block, error) {
+	var block models.Block
+
+	err := db.
+		Order("height desc").
+		Limit(1).
+		Take(&block).Error
+
+	return block, err
+}
+
+func AddBlock(db *gorm.DB, block *models.Block) error {
+	return db.Create(block).Error
+}
+
+func IsBlockValid(newBlock, oldBlock models.Block) bool {
+	if oldBlock.Height+1 != newBlock.Height {
+		return false
 	}
 
-	Blockchain = chain
+	if oldBlock.BlockHash != newBlock.PrevHash {
+		return false
+	}
+
+	expectedHash := calculateBlockHash(
+		newBlock.PrevHash,
+		newBlock.Height,
+		newBlock.TxCount,
+		newBlock.CreatedAt,
+	)
+
+	if expectedHash != newBlock.BlockHash {
+		return false
+	}
+
 	return true
-}
-
-// ================ CORE BLOCKCHAIN FUNCTIONS ================
-
-// GetLastBlock mengambil block terakhir
-func GetLastBlock() models.Block {
-	chainMutex.RLock()
-	defer chainMutex.RUnlock()
-
-	if len(Blockchain) == 0 {
-		return models.Block{}
-	}
-	return Blockchain[len(Blockchain)-1]
-}
-
-// IsBlockValid memvalidasi block
-func IsBlockValid(newBlock, prevBlock models.Block) bool {
-	if prevBlock.Index+1 != newBlock.Index {
-		return false
-	}
-	if prevBlock.Hash != newBlock.PrevHash {
-		return false
-	}
-	if CalculateHash(newBlock) != newBlock.Hash {
-		return false
-	}
-	if !newBlock.Encrypted {
-		return false
-	}
-	return true
-}
-
-// CalculateHash menghitung hash untuk block
-func CalculateHash(block models.Block) string {
-	record := strconv.Itoa(block.Index) + strconv.FormatInt(block.Timestamp, 10) + block.PrevHash + fmt.Sprintf("%v", block.Transactions) + strconv.Itoa(block.Nonce)
-	h := sha256.New()
-	h.Write([]byte(record))
-	hashed := h.Sum(nil)
-	return fmt.Sprintf("%x", hashed)
-}
-
-// MineBlock melakukan proof-of-work
-func MineBlock(block *models.Block, difficulty int) {
-	for {
-		hash := CalculateHash(*block)
-		if hash[:difficulty] == "0000" {
-			block.Hash = hash
-			break
-		}
-		block.Nonce++
-	}
-}
-
-// Iterate iterates over all transactions in the mempool and applies the given function.
-func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
-	for _, block := range GetAllBlocks() {
-		for i := range block.Transactions {
-			tx := &block.Transactions[i]
-
-			// Jika email_login diberikan, cek:
-			// 1. creator sama dengan email_login
-			// 2. atau email_login terdaftar di checkpoint
-			include := false
-			if email_login != "" {
-				if tx.Creator == email_login {
-					include = true
-				} else {
-					for _, cp := range tx.Checkpoints {
-						if cp.Email == email_login {
-							include = true
-							break
-						}
-					}
-				}
-			} else {
-				// jika email_login kosong, ambil semua
-				include = true
-			}
-
-			if !include {
-				continue
-			}
-
-			if err := fn(tx); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func RemoveDuplicateBlocks() {
-	seen := make(map[string]bool)
-	var cleaned []models.Block
-
-	for _, b := range Blockchain {
-		if !seen[b.Hash] {
-			seen[b.Hash] = true
-			cleaned = append(cleaned, b)
-		}
-	}
-	Blockchain = cleaned
-	fmt.Printf("[Blockchain] Duplicate blocks removed, %d retained\n", len(cleaned))
 }

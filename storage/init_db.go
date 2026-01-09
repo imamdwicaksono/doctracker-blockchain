@@ -1,16 +1,17 @@
 package storage
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
 	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 // InitDB initializes PostgreSQL connection
 func InitDB() {
@@ -29,22 +30,30 @@ func InitDB() {
 		)
 	}
 
-	db, err := sql.Open("postgres", dsn)
+	gormDB, err := gorm.Open(
+		postgres.Open(dsn),
+		&gorm.Config{},
+	)
 	if err != nil {
 		log.Fatal("[DB] open error:", err)
 	}
 
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		log.Fatal("[DB] get sql.DB error:", err)
+	}
+
 	// Connection pool config (AMAN)
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
 
 	// Test connection
-	if err := db.Ping(); err != nil {
+	if err := sqlDB.Ping(); err != nil {
 		log.Fatal("[DB] ping error:", err)
 	}
 
-	DB = db
+	DB = gormDB
 	log.Println("[DB] PostgreSQL connected")
 }
 

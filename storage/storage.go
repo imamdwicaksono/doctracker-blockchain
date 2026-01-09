@@ -38,3 +38,13 @@ func FindTrackerByID(id string) *models.Tracker {
 func UpdateTracker(t *models.Tracker) {
 	Trackers[t.ID] = t
 }
+
+func GetTrackersByAddress(address string) []models.Tracker {
+	var result []models.Tracker
+	for _, t := range Trackers {
+		if t.CreatorAddr == address {
+			result = append(result, *t)
+		}
+	}
+	return result
+}

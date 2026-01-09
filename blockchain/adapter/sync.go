@@ -2,14 +2,14 @@ package adapter
 
 import (
 	"context"
-	"database/sql"
 	"math/big" // Adjust the import path as necessary
 
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"gorm.io/gorm"
 )
 
-func (l *Listener) SyncFromLastBlock(ctx context.Context, db *sql.DB) error {
+func (l *Listener) SyncFromLastBlock(ctx context.Context, db *gorm.DB) error {
 
 	lastBlock := LoadLastBlock(db)
 

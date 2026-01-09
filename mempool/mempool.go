@@ -4,231 +4,68 @@ package mempool
 import (
 	"doc-tracker/models"
 	"doc-tracker/utils"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"log"
-	"os"
 	"sync"
 
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type TrackerEntry = models.Tracker
 
 var (
-	mempool      = make(map[string]*models.Tracker)
-	mu           sync.RWMutex
-	jsonFilePath = "data/mempool.json"
-	binFilePath  = "data/mempool.bin"
-	pubKeyPath   = "data/public.key"
-	privKeyPath  = "data/private.key"
+	mempool = make(map[string]*models.Tracker)
+	mu      sync.RWMutex
 )
 
 // InitKeys inisialisasi atau load kunci
 func InitKeys() (*utils.ECDHKeyPair, error) {
-	// Jika kunci sudah ada, load dari file
-	if _, err := os.Stat(pubKeyPath); err == nil {
-		return utils.LoadKeys()
-	}
-
-	// Generate new key pair
-	keyPair, err := utils.GenerateECDHKeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate keys: %v", err)
-	}
-
-	// Simpan public key
-	pubKeyBytes := utils.SerializePublicKey(keyPair.PublicKey)
-	if err := os.WriteFile(pubKeyPath, pubKeyBytes, 0600); err != nil {
-		return nil, fmt.Errorf("failed to save public key: %v", err)
-	}
-
-	// Simpan private key
-	privKeyBytes := keyPair.PrivateKey.Bytes()
-	if err := os.WriteFile(privKeyPath, privKeyBytes, 0600); err != nil {
-		return nil, fmt.Errorf("failed to save private key: %v", err)
-	}
-
-	return keyPair, nil
+	return utils.LoadKeysFromEnv()
 }
 
-// InitEncryptMempool migrasi ke mempool terenkripsi
-func InitEncryptMempool() error {
+func InitFromDB(db *gorm.DB) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Skip jika file terenkripsi sudah ada
-	if _, err := os.Stat(binFilePath); err == nil {
-		log.Println("🟡 Encrypted mempool already exists")
-		return nil
+	var trackers []models.Tracker
+	if err := db.
+		Where("status IN ?", []string{"progress", "pending"}).
+		Find(&trackers).Error; err != nil {
+		return err
 	}
 
-	// Cek jika file plaintext ada
-	if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
-		log.Println("🟡 No mempool found to encrypt")
-		return nil
-	}
-
-	log.Println("🔄 Encrypting mempool...")
-
-	// Load kunci
-	keyPair, err := utils.LoadKeys()
-	if err != nil {
-		return fmt.Errorf("failed to load keys: %v", err)
-	}
-
-	// Baca data plaintext
-	plaintext, err := os.ReadFile(jsonFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to read mempool: %v", err)
-	}
-
-	// Enkripsi data
-	// Untuk demo, kita gunakan kunci public sendiri sebagai peer
-	sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to derive secret: %v", err)
-	}
-
-	encKey := utils.GenerateEncryptionKey(sharedSecret)
-	ciphertext, err := utils.EncryptData(encKey, plaintext)
-	if err != nil {
-		return fmt.Errorf("encryption failed: %v", err)
-	}
-
-	// Simpan versi terenkripsi
-	if err := os.WriteFile(binFilePath, ciphertext, 0600); err != nil {
-		return fmt.Errorf("failed to save encrypted mempool: %v", err)
-	}
-
-	// Hapus file plaintext (opsional)
-	if err := os.Remove(jsonFilePath); err != nil {
-		log.Printf("⚠️ Could not remove plaintext file: %v", err)
-	}
-
-	log.Println("✅ Mempool encrypted successfully")
-	return nil
-}
-
-// LoadFromFile memuat mempool dari file terenkripsi
-func LoadFromFile() error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Coba load dari file terenkripsi dulu
-	if _, err := os.Stat(binFilePath); err == nil {
-		// Load kunci
-		keyPair, err := utils.LoadKeys()
-		if err != nil {
-			return fmt.Errorf("failed to load keys: %v", err)
-		}
-
-		// Baca data terenkripsi
-		ciphertext, err := os.ReadFile(binFilePath)
-		if err != nil {
-			return fmt.Errorf("failed to read encrypted mempool: %v", err)
-		}
-
-		// Dekripsi data
-		sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
-		if err != nil {
-			return fmt.Errorf("failed to derive secret: %v", err)
-		}
-
-		encKey := utils.GenerateEncryptionKey(sharedSecret)
-		plaintext, err := utils.DecryptData(encKey, ciphertext)
-		if err != nil {
-			return fmt.Errorf("decryption failed: %v", err)
-		}
-
-		// Parse JSON
-		var loadedMempool map[string]*models.Tracker
-		if err := json.Unmarshal(plaintext, &loadedMempool); err != nil {
-			return fmt.Errorf("failed to parse mempool: %v", err)
-		}
-
-		mempool = loadedMempool
-		log.Println("✅ Mempool loaded from encrypted file")
-		return nil
-	}
-
-	// Fallback ke file plaintext
-	if _, err := os.Stat(jsonFilePath); err == nil {
-		log.Println("🟡 Loading from plaintext mempool")
-		return loadFromPlaintext()
-	}
-
-	return errors.New("no mempool file found")
-}
-
-// loadFromPlaintext helper untuk load dari JSON plaintext
-func loadFromPlaintext() error {
-	data, err := os.ReadFile(jsonFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to read plaintext mempool: %v", err)
-	}
-
-	var loadedMempool map[string]*models.Tracker
-	if err := json.Unmarshal(data, &loadedMempool); err != nil {
-		return fmt.Errorf("failed to parse mempool: %v", err)
-	}
-
-	mempool = loadedMempool
-	return nil
-}
-
-// SaveToFile menyimpan mempool ke file terenkripsi
-func SaveToFile() error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Marshal data ke JSON
-	data, err := json.MarshalIndent(mempool, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal mempool: %v", err)
-	}
-
-	// Load kunci
-	keyPair, err := utils.LoadKeys()
-	if err != nil {
-		return fmt.Errorf("failed to load keys: %v", err)
-	}
-
-	// Enkripsi data
-	sharedSecret, err := utils.DeriveSharedSecret(keyPair.PrivateKey, keyPair.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to derive secret: %v", err)
-	}
-
-	encKey := utils.GenerateEncryptionKey(sharedSecret)
-	ciphertext, err := utils.EncryptData(encKey, data)
-	if err != nil {
-		return fmt.Errorf("encryption failed: %v", err)
-	}
-
-	// Simpan ke file
-	if err := os.WriteFile(binFilePath, ciphertext, 0600); err != nil {
-		return fmt.Errorf("failed to save encrypted mempool: %v", err)
+	mempool = make(map[string]*models.Tracker)
+	for i := range trackers {
+		t := trackers[i]
+		mempool[t.ID] = &t
 	}
 
 	return nil
 }
 
-// [Fungsi-fungsi manajemen mempool yang sama seperti sebelumnya...]
-// Add, GetAll, GetCompletedTrackers, RemoveFromMempool, dll.
+func Add(db *gorm.DB, t *models.Tracker) error {
+	mu.Lock()
+	defer mu.Unlock()
 
-// Add tracker ke mempool jika belum ada
-func Add(t *models.Tracker) {
-	if _, exists := mempool[t.ID]; !exists {
-		mempool[t.ID] = t
+	if err := db.
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).
+		Create(t).Error; err != nil {
+		return err
 	}
-	SaveToFile()
+
+	mempool[t.ID] = t
+	return nil
 }
 
 // Get semua tracker di mempool
 func GetAll() []*models.Tracker {
-	var list []*models.Tracker
+	mu.RLock()
+	defer mu.RUnlock()
+
+	list := make([]*models.Tracker, 0, len(mempool))
 	for _, t := range mempool {
 		list = append(list, t)
 	}
@@ -247,6 +84,9 @@ func GetByID(id string) *models.Tracker {
 
 // Ambil tracker dengan status complete
 func GetCompletedTrackers() []*models.Tracker {
+	mu.RLock()
+	defer mu.RUnlock()
+
 	var completed []*models.Tracker
 	for _, t := range mempool {
 		if t.Status == "complete" {
@@ -257,37 +97,40 @@ func GetCompletedTrackers() []*models.Tracker {
 }
 
 // Hapus tracker dari mempool
-func RemoveFromMempool(id string) {
-	delete(mempool, id)
+func RemoveFromMempool(db *gorm.DB, id string) {
+	Remove(db, id)
 }
 
-func SyncMempool(c *fiber.Ctx) error {
-	var tracker models.Tracker
-	if err := c.BodyParser(&tracker); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid tracker data"})
-	}
+func SyncMempool(db *gorm.DB) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		var tracker models.Tracker
+		if err := c.BodyParser(&tracker); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid data"})
+		}
 
-	Add(&tracker) // gunakan fungsi baru
-	return c.JSON(fiber.Map{"status": "tracker synced"})
+		if err := Add(db, &tracker); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		return c.JSON(fiber.Map{"status": "ok"})
+	}
 }
 
 func GetProgressTrackers() []*models.Tracker {
-	var list []*models.Tracker
+	mu.RLock()
+	defer mu.RUnlock()
+
+	var progressTrackers []*models.Tracker
 	for _, t := range mempool {
 		if t.Status == "progress" {
-			list = append(list, t)
+			progressTrackers = append(progressTrackers, t)
 		}
 	}
-	return list
+	return progressTrackers
 }
 
-func Update(tracker models.Tracker) {
-	if _, exists := mempool[tracker.ID]; exists {
-		mempool[tracker.ID] = &tracker
-		return
-	}
-	// jika tidak ditemukan, tambahkan
-	mempool[tracker.ID] = &tracker
+func Update(db *gorm.DB, tracker *models.Tracker) error {
+	return UpdateTracker(db, tracker)
 }
 
 func Clear() {
@@ -314,34 +157,15 @@ func Exists(id string) bool {
 }
 
 // Iterate iterates over all transactions in the mempool and applies the given function.
-func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
+func Iterate(fn func(tx *models.Tracker) error, email string) error {
+	mu.RLock()
+	snapshot := make([]*models.Tracker, 0, len(mempool))
+	for _, tx := range mempool {
+		snapshot = append(snapshot, tx)
+	}
+	mu.RUnlock()
 
-	for _, tx := range mempool { // assuming mempool is a slice of *models.Tracker
-		include := false
-
-		if email_login == "" {
-			include = true // ambil semua jika email kosong
-		} else if tx.Creator == email_login {
-			include = true // ambil jika dia creator
-		} else {
-			// cek jika email_login ada di checkpoint
-			for _, cp := range tx.Checkpoints {
-				if cp.Email == email_login {
-					include = true
-					break
-				}
-			}
-		}
-
-		if !include {
-			continue
-		}
-
-		// optional: hanya iterasi tracker yang sedang progress
-		// if tx.Status != "progress" {
-		//     continue
-		// }
-
+	for _, tx := range snapshot {
 		if err := fn(tx); err != nil {
 			return err
 		}
@@ -349,32 +173,26 @@ func Iterate(fn func(tx *models.Tracker) error, email_login string) error {
 	return nil
 }
 
-func UpdateTracker(tracker *models.Tracker) {
+func UpdateTracker(db *gorm.DB, tracker *models.Tracker) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	mempool[tracker.ID] = tracker
-
-	if err := SaveToFile(); err != nil {
-		fmt.Printf("❌ Gagal simpan mempool: %v\n", err)
+	if err := db.Save(tracker).Error; err != nil {
+		return err
 	}
+
+	mempool[tracker.ID] = tracker
+	return nil
 }
 
-func RemoveDuplicateEntries() {
-	unique := make(map[string]bool)
-	var cleaned []TrackerEntry
+func Remove(db *gorm.DB, id string) error {
+	mu.Lock()
+	defer mu.Unlock()
 
-	for _, entry := range mempool {
-		if !unique[entry.ID] {
-			unique[entry.ID] = true
-			cleaned = append(cleaned, *entry)
-		}
+	if err := db.Delete(&models.Tracker{}, "id = ?", id).Error; err != nil {
+		return err
 	}
 
-	// Rebuild mempool with unique entries
-	mempool = make(map[string]*models.Tracker)
-	for i := range cleaned {
-		mempool[cleaned[i].ID] = &cleaned[i]
-	}
-	fmt.Printf("[Cleanse] %d unique tracker entries retained\n", len(cleaned))
+	delete(mempool, id)
+	return nil
 }

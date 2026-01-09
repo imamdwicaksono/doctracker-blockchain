@@ -1,94 +1,58 @@
 package p2p
 
 import (
-	"bytes"
-	"doc-tracker/mempool"
-	"doc-tracker/models"
-	"doc-tracker/utils"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net"
-	"net/http"
+	"context"
+	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"doc-tracker/models"
+	"doc-tracker/proto"
+	"doc-tracker/storage"
+	"doc-tracker/utils"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"gorm.io/gorm/clause"
 )
 
-func InitBroadcaster() {
+func FetchTrackersFromPeer(peerAddr string) ([]models.Tracker, error) {
 
-}
-
-// Broadcast block baru ke semua peer
-func BroadcastNewBlock(block models.Block) {
-	// Broadcast("/p2p/block", block)
-	peers := GetPeers()
-	for _, peer := range peers {
-		protoBlock := utils.ConvertToProtoBlock(block)
-		BroadcastToPeer(peer, protoBlock)
-	}
-}
-
-func BroadcastTCP(messageType string, data interface{}) {
-	jsonData, _ := json.Marshal(map[string]interface{}{
-		"type": messageType,
-		"data": data,
-	})
-
-	for _, peer := range Peers {
-		go func(address string) {
-			conn, err := net.Dial("tcp", address)
-			if err != nil {
-				fmt.Printf("[Broadcast] Failed to connect to %s\n", address)
-				return
-			}
-			defer conn.Close()
-			conn.Write(jsonData)
-		}(peer)
-	}
-}
-
-func Broadcast(path string, data interface{}) {
-	for _, peer := range Peers {
-		go func(p string) {
-			url := fmt.Sprintf("http://%s%s", p, path)
-			jsonData, _ := json.Marshal(data)
-			http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-		}(peer)
-	}
-}
-
-func FetchLatestBlockFrom(peer string) models.Block {
-	resp, err := http.Get(fmt.Sprintf("http://%s/p2p/latest-block", peer))
+	conn, err := grpc.Dial(
+		peerAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
-		return models.Block{}
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer conn.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	var block models.Block
-	json.Unmarshal(body, &block)
-	return block
-}
+	client := proto.NewP2PServiceClient(conn)
 
-func FetchMempoolFrom(peer string) []mempool.TrackerEntry {
-	resp, err := http.Get(fmt.Sprintf("http://%s/p2p/mempool", peer))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 🔒 DATA ONLY (no mempool wording)
+	res, err := client.GetTrackers(ctx, &proto.Empty{})
 	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	var entries []mempool.TrackerEntry
-	json.Unmarshal(body, &entries)
-	return entries
-}
-
-func ReceiveMempool(c *fiber.Ctx) error {
-	var tx mempool.TrackerEntry
-	if err := c.BodyParser(&tx); err != nil {
-		return c.SendStatus(400)
+		return nil, err
 	}
 
-	mempool.AddIfNotExists(tx)
-	return c.SendStatus(200)
+	var trackers []models.Tracker
+
+	for _, t := range res.Trackers {
+		tracker := utils.FromProtoTracker(t)
+
+		// ✅ DB-first, idempotent
+		if err := storage.DB.
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoNothing: true,
+			}).
+			Create(&tracker).Error; err != nil {
+			return nil, err
+		}
+
+		trackers = append(trackers, tracker)
+	}
+
+	return trackers, nil
 }
