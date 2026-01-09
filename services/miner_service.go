@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"doc-tracker/blockchain"
@@ -85,6 +86,11 @@ func MineOnce(db *gorm.DB) error {
 			block.Height,
 			block.TxCount,
 		)
+
+		err = blockchain.AnchorBlockToChain(uint64(block.Height), block.BlockHash)
+		if err != nil {
+			log.Println("[Audit] anchor failed:", err)
+		}
 
 		return nil
 	})

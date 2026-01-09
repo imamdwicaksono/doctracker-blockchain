@@ -4,6 +4,8 @@ import (
 	"context"
 	"doc-tracker/blockchain"
 	"doc-tracker/blockchain/adapter"
+	"doc-tracker/blockchain/audit"
+	"doc-tracker/blockchain/audit/contract"
 	"doc-tracker/grpc"
 	"doc-tracker/mempool"
 	"doc-tracker/middlewares"
@@ -70,7 +72,7 @@ func main() {
 // ===================== BLOCKCHAIN LISTENER =====================
 func startBlockchainListener() {
 
-	client, err := adapter.NewClient()
+	client, err := audit.NewClient()
 	if err != nil {
 		log.Fatal("[Blockchain] client error:", err)
 	}
@@ -79,10 +81,7 @@ func startBlockchainListener() {
 		os.Getenv("AUDIT_CONTRACT_ADDRESS"),
 	)
 
-	auditContract, err := adapter.NewDocumentAudit(
-		contractAddr,
-		client.Eth,
-	)
+	auditContract, err := contract.NewContract(contractAddr, client.Eth)
 	if err != nil {
 		log.Fatal("[Blockchain] contract bind error:", err)
 	}

@@ -13,3 +13,12 @@ type BlockchainAudit struct {
 	BlockHash   string `json:"block_hash"`
 	EvmTxHash   string `json:"evm_tx_hash"`
 }
+
+type BlockPayload struct {
+	Height     uint64   `json:"height"`
+	PrevHash   string   `json:"prev_hash"`
+	Timestamp  int64    `json:"timestamp"`
+	TxHashes   []string `json:"tx_hashes"`
+	MerkleRoot string   `json:"merkle_root"`
+	BlockHash  string   `json:"block_hash"`
+}

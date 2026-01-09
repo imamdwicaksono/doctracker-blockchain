@@ -31,10 +31,13 @@ func UpdateCheckpointStatus(
 
 		updated := false
 
+		fmt.Println("Updating checkpoint:", checkpointAddr)
+
 		for i := range tracker.Checkpoints {
 			cp := &tracker.Checkpoints[i]
 
 			for _, addr := range cp.Addresses {
+				fmt.Println("Checking address:", addr)
 				if addr == checkpointAddr {
 
 					if cp.IsCompleted {
@@ -123,4 +126,69 @@ func GetCheckpointAddressByEmail(trackerID, email string) string {
 	}
 
 	return ""
+}
+
+func GetCourierCheckpointAddress(trackerID string) string {
+
+	tracker, err := GetTrackerByID(trackerID)
+	if err != nil {
+		return ""
+	}
+
+	// fmt.Println("Looking for courier checkpoint in tracker:", trackerID)
+
+	for _, cp := range tracker.Checkpoints {
+		// fmt.Println("Checkpoint role:", cp.Role)
+		// 🚚 courier checkpoint has empty emails
+		if cp.Role == "courier" {
+			// fmt.Println("Found courier checkpoint")
+
+			for _, addr := range cp.Addresses {
+				if addr != "" {
+					// fmt.Println("Address:", addr)
+					return addr
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+func IsCourierCheckpoint(trackerID, email string) bool {
+
+	tracker, err := GetTrackerByID(trackerID)
+	if err != nil {
+		return false
+	}
+
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	for _, cp := range tracker.Checkpoints {
+
+		// 🚚 courier checkpoint has empty emails
+		if len(cp.Emails) == 0 {
+			for _, addr := range cp.Addresses {
+				if addr != "" {
+					return true
+				}
+			}
+		}
+
+		for _, e := range cp.Emails {
+			if strings.ToLower(strings.TrimSpace(e)) == email {
+
+				// 🚚 courier checkpoint has empty emails
+				if len(cp.Emails) == 0 {
+					for _, addr := range cp.Addresses {
+						if addr != "" {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }

@@ -3,6 +3,7 @@ package controllers
 import (
 	"doc-tracker/models"
 	"doc-tracker/services"
+	"fmt"
 	"os"
 	"strings"
 
@@ -26,15 +27,33 @@ func CompleteCheckpoint(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	if body.TrackerID == "" || body.Email == "" || body.Evidence == "" {
-		return c.Status(400).JSON(fiber.Map{
-			"error": "tracker_id, email, and base64 evidence are required",
-		})
-	}
+	isCourier := body.IsCourier
+	checkpointAddr := ""
+	fmt.Println("IsCourier:", isCourier)
+	if !isCourier {
 
-	checkpointAddr := services.GetCheckpointAddressByEmail(body.TrackerID, body.Email)
-	if checkpointAddr == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "checkpoint address not found"})
+		if body.TrackerID == "" || body.Email == "" || body.Evidence == "" {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "tracker_id, email, and base64 evidence are required",
+			})
+		}
+
+		checkpointAddr = services.GetCheckpointAddressByEmail(body.TrackerID, body.Email)
+		if checkpointAddr == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "checkpoint address not found"})
+		}
+
+	} else {
+		if body.TrackerID == "" || body.Evidence == "" {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "tracker_id, and base64 evidence are required",
+			})
+		}
+
+		checkpointAddr = services.GetCourierCheckpointAddress(body.TrackerID)
+		if checkpointAddr == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "courier checkpoint address not found"})
+		}
 	}
 
 	evidence := cleanBase64(body.Evidence)

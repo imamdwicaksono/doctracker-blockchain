@@ -55,4 +55,5 @@ type CheckpointStatusInput struct {
 	Email     string `json:"email"`
 	Note      string `json:"note"`
 	Evidence  string `json:"evidence"` // ✅ bukan pointer
+	IsCourier bool   `json:"is_courier"`
 }

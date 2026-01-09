@@ -1,6 +1,9 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/base32"
+	"strings"
 	"time"
 
 	"doc-tracker/models"
@@ -8,12 +11,27 @@ import (
 	"doc-tracker/utils"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
+
+func GenerateShortUUID() string {
+	// YYYYMMDD → YYMMDD (6 char)
+	date := "TRK-" + time.Now().Format("060102")
+
+	// Random 4 bytes → base32 → 6 chars → ambil 4
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+
+	randPart := strings.TrimRight(
+		base32.StdEncoding.EncodeToString(b),
+		"=",
+	)
+
+	return date + randPart[:4]
+}
 
 func CreateTracker(input models.Tracker) (models.Tracker, error) {
 
-	input.ID = uuid.NewString()
+	input.ID = GenerateShortUUID()
 	input.CreatedAt = time.Now().Unix()
 	input.Status = "progress"
 
