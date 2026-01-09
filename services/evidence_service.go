@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/sha256"
+	"doc-tracker/models"
 	"doc-tracker/storage"
 	"encoding/base64"
 	"fmt"
@@ -44,6 +45,10 @@ func SaveEvidenceBase64ToS3(trackerID, checkpointID string, base64Str *string) (
 		Hash:     fmt.Sprintf("%x", hash[:]),
 		Path:     s3Key,
 	}, nil
+}
+
+func GetEvidencePath(track, checkpointID string) string {
+	return fmt.Sprintf("evidence/%s_%s.jpg", track, checkpointID)
 }
 
 func LoadEvidenceFromS3(fileName string) ([]byte, error) {
@@ -100,4 +105,55 @@ func SaveEvidenceFileLocal(trackerID, checkpointID string, file *string) (Eviden
 		Hash:     fmt.Sprintf("%x", hash.Sum(nil)),
 		Path:     savePath,
 	}, nil
+}
+
+type EvidenceRecord struct {
+	TrackerID string
+	Path      string
+}
+
+func GetEvidenceByHash(hash string) (*EvidenceRecord, error) {
+
+	var res EvidenceRecord
+
+	err := storage.DB.Raw(`
+		SELECT
+			id AS tracker_id,
+			cp->>'evidence_path' AS path
+		FROM trackers,
+		     jsonb_array_elements(checkpoints) cp
+		WHERE cp->>'evidence_hash' = ?
+		LIMIT 1
+	`, hash).Scan(&res).Error
+
+	if err != nil || res.Path == "" {
+		return nil, fmt.Errorf("evidence not found")
+	}
+
+	return &res, nil
+}
+
+func CanViewEvidence(trackerID, email string) bool {
+	var tracker models.Tracker
+	if err := storage.DB.
+		Where("id = ?", trackerID).
+		First(&tracker).Error; err != nil {
+		return false
+	}
+
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	if strings.ToLower(tracker.Creator) == email {
+		return true
+	}
+
+	for _, cp := range tracker.Checkpoints {
+		for _, e := range cp.Emails {
+			if strings.ToLower(e) == email {
+				return true
+			}
+		}
+	}
+
+	return false
 }

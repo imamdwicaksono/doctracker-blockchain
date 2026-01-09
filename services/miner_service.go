@@ -17,19 +17,18 @@ func StartMinerWorker() {
 
 	go func() {
 		for range ticker.C {
-			if err := mineOnce(storage.DB); err != nil {
+			if err := MineOnce(storage.DB); err != nil {
 				fmt.Println("[Miner] error:", err)
 			}
 		}
 	}()
 }
 
-func mineOnce(db *gorm.DB) error {
-
+func MineOnce(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 
-		// 1️⃣ Lock tracker rows (multi-worker safe)
-		var trackers []models.Tracker
+		// 1️⃣ Lock candidate trackers
+		var candidates []models.Tracker
 		if err := tx.
 			Clauses(clause.Locking{
 				Strength: "UPDATE",
@@ -37,17 +36,35 @@ func mineOnce(db *gorm.DB) error {
 			}).
 			Where("status = ?", "progress").
 			Limit(50).
-			Find(&trackers).Error; err != nil {
+			Find(&candidates).Error; err != nil {
 			return err
 		}
 
-		if len(trackers) == 0 {
-			return nil // nothing to mine
+		if len(candidates) == 0 {
+			return nil
 		}
 
-		// 2️⃣ Update tracker status → complete
-		ids := make([]string, 0, len(trackers))
-		for _, t := range trackers {
+		// 2️⃣ Filter trackers with ALL checkpoints completed
+		var eligible []models.Tracker
+		for _, t := range candidates {
+			if allCheckpointsCompleted(t.Checkpoints) {
+				eligible = append(eligible, t)
+			}
+		}
+
+		if len(eligible) == 0 {
+			return nil // nothing eligible to mine
+		}
+
+		// 3️⃣ Create block FIRST (DB-first)
+		block, err := blockchain.CreateBlock(tx, eligible)
+		if err != nil {
+			return err
+		}
+
+		// 4️⃣ Update tracker status → complete (AFTER block)
+		ids := make([]string, 0, len(eligible))
+		for _, t := range eligible {
 			ids = append(ids, t.ID)
 		}
 
@@ -58,21 +75,30 @@ func mineOnce(db *gorm.DB) error {
 			return err
 		}
 
-		// 3️⃣ Create audit block (DB-first)
-		block, err := blockchain.CreateBlock(tx, trackers)
-		if err != nil {
-			return err
-		}
-
-		// 4️⃣ Async EVM audit (non-blocking)
+		// 5️⃣ Async anchor to EVM
 		go func(b models.Block) {
-			// TODO: kirim hash ke EVM & SaveAudit
 			fmt.Println("[Audit] block anchored:", b.BlockHash)
 		}(*block)
 
-		fmt.Printf("[Miner] block #%d created (%d trackers)\n",
-			block.Height, block.TxCount)
+		fmt.Printf(
+			"[Miner] block #%d created (%d trackers)\n",
+			block.Height,
+			block.TxCount,
+		)
 
 		return nil
 	})
+}
+
+func allCheckpointsCompleted(checkpoints models.Checkpoints) bool {
+	if len(checkpoints) == 0 {
+		return false // no checkpoint = NOT eligible
+	}
+
+	for _, cp := range checkpoints {
+		if !cp.IsCompleted {
+			return false
+		}
+	}
+	return true
 }

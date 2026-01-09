@@ -29,14 +29,15 @@ type Checkpoint struct {
 	Company        string                 `protobuf:"bytes,4,opt,name=company,proto3" json:"company,omitempty"`
 	Role           string                 `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
 	IsViewable     bool                   `protobuf:"varint,6,opt,name=is_viewable,json=isViewable,proto3" json:"is_viewable,omitempty"`
-	EncryptedNote  string                 `protobuf:"bytes,7,opt,name=encrypted_note,json=encryptedNote,proto3" json:"encrypted_note,omitempty"`
-	EncryptedNotes map[string]string      `protobuf:"bytes,8,rep,name=encrypted_notes,json=encryptedNotes,proto3" json:"encrypted_notes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Addresses      []string               `protobuf:"bytes,9,rep,name=addresses,proto3" json:"addresses,omitempty"`
-	Address        string                 `protobuf:"bytes,10,opt,name=address,proto3" json:"address,omitempty"`
-	EvidenceHash   string                 `protobuf:"bytes,11,opt,name=evidence_hash,json=evidenceHash,proto3" json:"evidence_hash,omitempty"`
-	EvidencePath   string                 `protobuf:"bytes,12,opt,name=evidence_path,json=evidencePath,proto3" json:"evidence_path,omitempty"`
-	IsCompleted    bool                   `protobuf:"varint,13,opt,name=is_completed,json=isCompleted,proto3" json:"is_completed,omitempty"`
-	CompletedAt    int64                  `protobuf:"varint,14,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	Note           string                 `protobuf:"bytes,7,opt,name=note,proto3" json:"note,omitempty"`
+	EncryptedNote  string                 `protobuf:"bytes,8,opt,name=encrypted_note,json=encryptedNote,proto3" json:"encrypted_note,omitempty"`
+	EncryptedNotes map[string]string      `protobuf:"bytes,9,rep,name=encrypted_notes,json=encryptedNotes,proto3" json:"encrypted_notes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Addresses      []string               `protobuf:"bytes,10,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	Address        string                 `protobuf:"bytes,11,opt,name=address,proto3" json:"address,omitempty"`
+	EvidenceHash   string                 `protobuf:"bytes,12,opt,name=evidence_hash,json=evidenceHash,proto3" json:"evidence_hash,omitempty"`
+	EvidencePath   string                 `protobuf:"bytes,13,opt,name=evidence_path,json=evidencePath,proto3" json:"evidence_path,omitempty"`
+	IsCompleted    bool                   `protobuf:"varint,14,opt,name=is_completed,json=isCompleted,proto3" json:"is_completed,omitempty"`
+	CompletedAt    int64                  `protobuf:"varint,15,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -111,6 +112,13 @@ func (x *Checkpoint) GetIsViewable() bool {
 		return x.IsViewable
 	}
 	return false
+}
+
+func (x *Checkpoint) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
 }
 
 func (x *Checkpoint) GetEncryptedNote() string {
@@ -413,7 +421,7 @@ var File_proto_p2p_proto protoreflect.FileDescriptor
 
 const file_proto_p2p_proto_rawDesc = "" +
 	"\n" +
-	"\x0fproto/p2p.proto\x12\x05proto\"\x9f\x04\n" +
+	"\x0fproto/p2p.proto\x12\x05proto\"\xb3\x04\n" +
 	"\n" +
 	"Checkpoint\x12\x16\n" +
 	"\x06emails\x18\x01 \x03(\tR\x06emails\x12\x14\n" +
@@ -422,16 +430,17 @@ const file_proto_p2p_proto_rawDesc = "" +
 	"\acompany\x18\x04 \x01(\tR\acompany\x12\x12\n" +
 	"\x04role\x18\x05 \x01(\tR\x04role\x12\x1f\n" +
 	"\vis_viewable\x18\x06 \x01(\bR\n" +
-	"isViewable\x12%\n" +
-	"\x0eencrypted_note\x18\a \x01(\tR\rencryptedNote\x12N\n" +
-	"\x0fencrypted_notes\x18\b \x03(\v2%.proto.Checkpoint.EncryptedNotesEntryR\x0eencryptedNotes\x12\x1c\n" +
-	"\taddresses\x18\t \x03(\tR\taddresses\x12\x18\n" +
-	"\aaddress\x18\n" +
-	" \x01(\tR\aaddress\x12#\n" +
-	"\revidence_hash\x18\v \x01(\tR\fevidenceHash\x12#\n" +
-	"\revidence_path\x18\f \x01(\tR\fevidencePath\x12!\n" +
-	"\fis_completed\x18\r \x01(\bR\visCompleted\x12!\n" +
-	"\fcompleted_at\x18\x0e \x01(\x03R\vcompletedAt\x1aA\n" +
+	"isViewable\x12\x12\n" +
+	"\x04note\x18\a \x01(\tR\x04note\x12%\n" +
+	"\x0eencrypted_note\x18\b \x01(\tR\rencryptedNote\x12N\n" +
+	"\x0fencrypted_notes\x18\t \x03(\v2%.proto.Checkpoint.EncryptedNotesEntryR\x0eencryptedNotes\x12\x1c\n" +
+	"\taddresses\x18\n" +
+	" \x03(\tR\taddresses\x12\x18\n" +
+	"\aaddress\x18\v \x01(\tR\aaddress\x12#\n" +
+	"\revidence_hash\x18\f \x01(\tR\fevidenceHash\x12#\n" +
+	"\revidence_path\x18\r \x01(\tR\fevidencePath\x12!\n" +
+	"\fis_completed\x18\x0e \x01(\bR\visCompleted\x12!\n" +
+	"\fcompleted_at\x18\x0f \x01(\x03R\vcompletedAt\x1aA\n" +
 	"\x13EncryptedNotesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9f\x03\n" +
@@ -456,12 +465,13 @@ const file_proto_p2p_proto_rawDesc = "" +
 	"\btrackers\x18\x01 \x03(\v2\x0e.proto.TrackerR\btrackers\"\a\n" +
 	"\x05Empty\" \n" +
 	"\x04Pong\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\x8d\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage2\xbe\x01\n" +
 	"\n" +
 	"P2PService\x12+\n" +
 	"\vSyncTracker\x12\x0e.proto.Tracker\x1a\f.proto.Empty\x12/\n" +
 	"\vSyncMempool\x12\x12.proto.TrackerList\x1a\f.proto.Empty\x12!\n" +
-	"\x04Ping\x12\f.proto.Empty\x1a\v.proto.PongB\x19Z\x17doc-tracker/proto;protob\x06proto3"
+	"\x04Ping\x12\f.proto.Empty\x1a\v.proto.Pong\x12/\n" +
+	"\vGetTrackers\x12\f.proto.Empty\x1a\x12.proto.TrackerListB\x19Z\x17doc-tracker/proto;protob\x06proto3"
 
 var (
 	file_proto_p2p_proto_rawDescOnce sync.Once
@@ -493,11 +503,13 @@ var file_proto_p2p_proto_depIdxs = []int32{
 	1, // 4: proto.P2PService.SyncTracker:input_type -> proto.Tracker
 	2, // 5: proto.P2PService.SyncMempool:input_type -> proto.TrackerList
 	3, // 6: proto.P2PService.Ping:input_type -> proto.Empty
-	3, // 7: proto.P2PService.SyncTracker:output_type -> proto.Empty
-	3, // 8: proto.P2PService.SyncMempool:output_type -> proto.Empty
-	4, // 9: proto.P2PService.Ping:output_type -> proto.Pong
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
+	3, // 7: proto.P2PService.GetTrackers:input_type -> proto.Empty
+	3, // 8: proto.P2PService.SyncTracker:output_type -> proto.Empty
+	3, // 9: proto.P2PService.SyncMempool:output_type -> proto.Empty
+	4, // 10: proto.P2PService.Ping:output_type -> proto.Pong
+	2, // 11: proto.P2PService.GetTrackers:output_type -> proto.TrackerList
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name

@@ -7,6 +7,6 @@ import (
 )
 
 func BlockRoutes(app fiber.Router) {
-	app.Post("/sync/block", controllers.ReceiveBlock)
-	app.Get("/blocks", controllers.GetChain)
+	app.Post("/sync/block", controllers.SyncBlock)
+	app.Get("/blocks", controllers.GetBlocks)
 }

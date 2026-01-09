@@ -8,7 +8,6 @@ package proto
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -23,6 +22,7 @@ const (
 	P2PService_SyncTracker_FullMethodName = "/proto.P2PService/SyncTracker"
 	P2PService_SyncMempool_FullMethodName = "/proto.P2PService/SyncMempool"
 	P2PService_Ping_FullMethodName        = "/proto.P2PService/Ping"
+	P2PService_GetTrackers_FullMethodName = "/proto.P2PService/GetTrackers"
 )
 
 // P2PServiceClient is the client API for P2PService service.
@@ -35,6 +35,7 @@ type P2PServiceClient interface {
 	SyncMempool(ctx context.Context, in *TrackerList, opts ...grpc.CallOption) (*Empty, error)
 	// Health check
 	Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Pong, error)
+	GetTrackers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*TrackerList, error)
 }
 
 type p2PServiceClient struct {
@@ -75,6 +76,16 @@ func (c *p2PServiceClient) Ping(ctx context.Context, in *Empty, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *p2PServiceClient) GetTrackers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*TrackerList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TrackerList)
+	err := c.cc.Invoke(ctx, P2PService_GetTrackers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // P2PServiceServer is the server API for P2PService service.
 // All implementations must embed UnimplementedP2PServiceServer
 // for forward compatibility.
@@ -85,6 +96,7 @@ type P2PServiceServer interface {
 	SyncMempool(context.Context, *TrackerList) (*Empty, error)
 	// Health check
 	Ping(context.Context, *Empty) (*Pong, error)
+	GetTrackers(context.Context, *Empty) (*TrackerList, error)
 	mustEmbedUnimplementedP2PServiceServer()
 }
 
@@ -103,6 +115,9 @@ func (UnimplementedP2PServiceServer) SyncMempool(context.Context, *TrackerList) 
 }
 func (UnimplementedP2PServiceServer) Ping(context.Context, *Empty) (*Pong, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedP2PServiceServer) GetTrackers(context.Context, *Empty) (*TrackerList, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTrackers not implemented")
 }
 func (UnimplementedP2PServiceServer) mustEmbedUnimplementedP2PServiceServer() {}
 func (UnimplementedP2PServiceServer) testEmbeddedByValue()                    {}
@@ -179,6 +194,24 @@ func _P2PService_Ping_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _P2PService_GetTrackers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(P2PServiceServer).GetTrackers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: P2PService_GetTrackers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(P2PServiceServer).GetTrackers(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // P2PService_ServiceDesc is the grpc.ServiceDesc for P2PService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -197,6 +230,10 @@ var P2PService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _P2PService_Ping_Handler,
+		},
+		{
+			MethodName: "GetTrackers",
+			Handler:    _P2PService_GetTrackers_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

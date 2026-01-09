@@ -51,7 +51,7 @@ func CreateBlock(
 
 		hash := calculateBlockHash(
 			last.BlockHash,
-			height,
+			int(height),
 			len(trackers),
 			createdAt,
 		)
@@ -96,7 +96,7 @@ func SaveAudit(
 ) error {
 
 	return db.Create(&models.BlockchainAudit{
-		BlockHeight: block.Height,
+		BlockHeight: int(block.Height),
 		BlockHash:   block.BlockHash,
 		EvmTxHash:   evmTxHash,
 	}).Error
@@ -144,7 +144,7 @@ func IsBlockValid(newBlock, oldBlock models.Block) bool {
 
 	expectedHash := calculateBlockHash(
 		newBlock.PrevHash,
-		newBlock.Height,
+		int(newBlock.Height),
 		newBlock.TxCount,
 		newBlock.CreatedAt,
 	)

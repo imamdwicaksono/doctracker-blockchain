@@ -56,3 +56,25 @@ func SyncMempool(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"status": "mempool synced"})
 }
+
+func ManualSync(c *fiber.Ctx) error {
+	var trackers []models.Tracker
+
+	if err := c.BodyParser(&trackers); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid mempool payload"})
+	}
+
+	for _, t := range trackers {
+		// DB first
+		_ = storage.DB.
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoNothing: true,
+			}).
+			Create(&t).Error
+
+		mempool.AddIfNotExists(t)
+	}
+
+	return c.JSON(fiber.Map{"status": "manual sync completed"})
+}

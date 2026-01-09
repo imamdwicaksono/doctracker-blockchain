@@ -148,7 +148,7 @@ func startHTTPServer() {
 	// ROUTES
 	routes.P2PRoutes(app)
 	routes.SyncRoutes(app)
-	routes.MinerRoutes(app)
+	routes.MinerRoutes(app, storage.DB)
 
 	app.Get("/swagger/*", swagger.HandlerDefault)
 
@@ -161,6 +161,7 @@ func startHTTPServer() {
 	routes.RegisterDecryptRoutes(protected)
 	routes.RegisterEvidenceRoutes(protected)
 	routes.RegisterCheckpointRoutes(protected)
+	routes.RegisterEvidenceRoutesWeb(protected)
 	routes.BlockRoutes(protected)
 
 	port := os.Getenv("PORT")

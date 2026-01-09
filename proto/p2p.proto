@@ -16,17 +16,18 @@ message Checkpoint {
   string role = 5;
   bool is_viewable = 6;
 
-  string encrypted_note = 7;
-  map<string, string> encrypted_notes = 8;
+  string note = 7;
+  string encrypted_note = 8;
+  map<string, string> encrypted_notes = 9;
 
-  repeated string addresses = 9;
-  string address = 10;
+  repeated string addresses = 10;
+  string address = 11;
 
-  string evidence_hash = 11;
-  string evidence_path = 12;
+  string evidence_hash = 12;
+  string evidence_path = 13;
 
-  bool is_completed = 13;
-  int64 completed_at = 14;
+  bool is_completed = 14;
+  int64 completed_at = 15;
 }
 
 message Tracker {
@@ -72,4 +73,6 @@ service P2PService {
 
   // Health check
   rpc Ping (Empty) returns (Pong);
+
+  rpc GetTrackers (Empty) returns (TrackerList); 
 }

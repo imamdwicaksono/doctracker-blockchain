@@ -42,7 +42,7 @@ func UpdateTracker(t *models.Tracker) {
 func GetTrackersByAddress(address string) []models.Tracker {
 	var result []models.Tracker
 	for _, t := range Trackers {
-		if t.CreatorAddr == address {
+		if t.CreatorAddress == address {
 			result = append(result, *t)
 		}
 	}

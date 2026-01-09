@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"mime"
 	"os"
 	"path/filepath"
 
@@ -68,35 +67,38 @@ func UploadEvidence(c *fiber.Ctx) error {
 func ViewEvidence(c *fiber.Ctx) error {
 	hash := c.Query("hash")
 	if hash == "" {
-		return c.Status(400).SendString("Missing image hash")
+		return c.Status(400).SendString("Missing evidence hash")
 	}
 
-	track, err := services.GetTrackerByHash(hash)
+	fmt.Printf("[Evidence] fetch hash %s\n", hash)
+
+	record, err := services.GetEvidenceByHash(hash)
 	if err != nil {
-		return c.Status(404).SendString("Tracker not found: " + err.Error())
+		return c.Status(404).SendString(err.Error())
 	}
 
-	filePath := services.GetEvidencePath(track, hash)
-	fmt.Printf("Load File from path: %s\n", filePath)
+	filePath := record.Path
+	fmt.Printf("[Evidence] load %s\n", filePath)
+
+	// 🔐 OPTIONAL ACL (recommended)
+	// userEmail := middlewares.GetLoginEmail(c)
+	// if !services.CanViewEvidence(record.TrackerID, userEmail) {
+	//     return c.Status(403).SendString("Forbidden")
+	// }
 
 	if os.Getenv("S3_STORAGE") == "true" {
 		key := filepath.Base(filePath)
 		content, err := storage.S3.DownloadS3File(key)
 		if err != nil {
-			return c.Status(404).SendString("Evidence not found on S3: " + err.Error())
+			return c.Status(404).SendString("Evidence not found on S3")
 		}
 
-		ext := filepath.Ext(filePath)
-		mimeType := mime.TypeByExtension(ext)
-		if mimeType != "" {
-			c.Set("Content-Type", mimeType)
-		}
-
+		c.Type(filepath.Ext(filePath))
 		return c.Send(content)
 	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return c.Status(404).SendString("File not found: " + filePath)
+		return c.Status(404).SendString("File not found")
 	}
 
 	return c.SendFile(filePath)

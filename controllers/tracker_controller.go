@@ -78,10 +78,12 @@ func CreateTracker(c *fiber.Ctx) error {
 func GetTrackers(c *fiber.Ctx) error {
 	trackers, err := services.GetTrackers(c)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch trackers"})
+		// return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch trackers"})
+		return c.JSON([]models.Tracker{})
 	}
 	if len(trackers) == 0 {
-		return c.Status(404).JSON(fiber.Map{"message": "No trackers found", "data": []models.Tracker{}})
+		// return c.Status(404).JSON(fiber.Map{"message": "No trackers found", "data": []models.Tracker{}})
+		return c.JSON([]models.Tracker{})
 	}
 	return c.JSON(trackers)
 }

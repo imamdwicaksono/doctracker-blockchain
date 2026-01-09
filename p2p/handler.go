@@ -7,6 +7,7 @@ import (
 	"doc-tracker/storage"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm/clause"
 )
 
 func FetchTrackersByAddress(c *fiber.Ctx) error {
@@ -15,10 +16,7 @@ func FetchTrackersByAddress(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "address required"})
 	}
 
-	trackers, err := storage.Services.GetTrackersByAddress(address)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
+	trackers := storage.GetTrackersByAddress(address)
 
 	return c.JSON(trackers)
 }
@@ -78,4 +76,41 @@ func FetchTrackersGRPC(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(trackers)
+}
+
+func ReceiveBlock(c *fiber.Ctx) error {
+	var block models.Block
+
+	if err := c.BodyParser(&block); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid block format"})
+	}
+
+	// Simpan ke DB
+	if err := storage.DB.Create(&block).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"status": "block received"})
+}
+
+func ReceiveMempool(c *fiber.Ctx) error {
+	var trackers []models.Tracker
+
+	if err := c.BodyParser(&trackers); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid mempool payload"})
+	}
+
+	for _, t := range trackers {
+		// DB first
+		_ = storage.DB.
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoNothing: true,
+			}).
+			Create(&t).Error
+
+		mempool.AddIfNotExists(t)
+	}
+
+	return c.JSON(fiber.Map{"status": "mempool received"})
 }

@@ -23,7 +23,7 @@ func (s *server) SyncTracker(
 	in *pb.Tracker,
 ) (*pb.Empty, error) {
 
-	tracker := utils.TrackerFromProto(in)
+	tracker := utils.FromProtoTracker(in)
 
 	// DB-first, idempotent
 	if err := storage.DB.
@@ -48,7 +48,7 @@ func (s *server) SyncMempool(
 ) (*pb.Empty, error) {
 
 	for _, t := range in.Trackers {
-		tracker := utils.TrackerFromProto(t)
+		tracker := utils.FromProtoTracker(t)
 
 		_ = storage.DB.
 			Clauses(clause.OnConflict{

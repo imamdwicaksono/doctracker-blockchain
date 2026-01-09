@@ -1,11 +1,11 @@
 package models
 
 type Block struct {
-	Height    int    `gorm:"primaryKey" json:"height"`
-	BlockHash string `gorm:"size:66;uniqueIndex" json:"block_hash"`
-	PrevHash  string `gorm:"size:66" json:"prev_hash"`
-	TxCount   int    `json:"tx_count"`
-	CreatedAt int64  `json:"created_at"`
+	Height    int64  `gorm:"column:height;primaryKey;autoIncrement:false"`
+	BlockHash string `gorm:"size:64;not null;uniqueIndex"`
+	PrevHash  string `gorm:"size:64"`
+	TxCount   int    `gorm:"not null"`
+	CreatedAt int64  `gorm:"not null"`
 }
 
 type BlockchainAudit struct {
