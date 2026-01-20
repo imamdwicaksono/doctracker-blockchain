@@ -102,7 +102,7 @@ func SendOtp(c *fiber.Ctx) error {
 	}
 
 	// Kirim email OTP
-	if err := utils.SendEmailOTP(identifier, otp); err != nil {
+	if err := utils.SendEmailOTP(identifier, otp, "resources/emails/request-otp.html"); err != nil {
 		fmt.Println("❌ Failed to send email:", err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to send OTP email")
 	}
